@@ -1,0 +1,34 @@
+# TuxFiles Layer Documentation
+
+This contains the auto-generated base documentation for a patchset created from layer: {{ data.primaryLayer }}. The creation date is {{data.timestamp}}.
+
+# Handled layers:
+
+{{data.primaryLayer}} references the following layers:
+{% for layer in data.layers -%}
+- {{layer.id}}: {{layer.title}}  
+{% endfor %}
+
+# Detailed release description:
+
+{% for layer in data.layers -%}
+{% if layer.description -%}
+- {{layer.description}} 
+{% endif -%}
+{% endfor -%}
+{# enforce whitespace...#}
+# Patches
+
+A patchset creating the following patches was created from the layer definitions:
+
+{% for patch in data.patches %}
+Patch: *{{patch.patchfile_basename}}*
+
+{% if patch.comments -%}
+{% for commentLine in patch.comments -%}
+{{commentLine}}  
+{% endfor -%}
+{% else -%}
+*No comment found*
+{% endif -%}
+{% endfor %}
