@@ -16,7 +16,7 @@ import pydriller
 from git import Repo
 
 from configuration import data
-from shared.helpers import exit_with_error, remove_empty_folders
+from shared.helpers import exit_with_error, remove_empty_folders, exit_application
 
 # Logging setup...
 logger = logging.getLogger(__name__)
@@ -86,6 +86,8 @@ def reverttobaseline(workdir, baseline, all):
     baselines = get_baselines_from_path(workdir, 0, True)[0]
     if all:
         logger.info("Resetting all repos to before the first baseline entry.")
+        if len(baselines) is 0:
+            exit_application("Repository contains no baselines, nothing to remove!")
         main_repo = Repo(workdir)
         distance = -1
         oldest_baseline = None
