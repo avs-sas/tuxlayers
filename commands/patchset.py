@@ -226,7 +226,17 @@ A patchset creating the following patches was created from the layer definitions
     type=click.STRING,
     default='',
     help='If we are adding baselines, start from this layer.')
-def apply(patch_set, workdir, addbaselines, fromlayer):
+@click.options(
+    '--applyOption', '-a',
+    required=false,
+    multiple=True,
+    help='Pass user-specific options to git apply. The patch file is added at the very end of the command.')
+@click.options(
+    '--commitOption', '-c',
+    required=false,
+    multiple=True,
+    help='Pass user-specific options to git commit. -m with an auto-generatedcommit messaage is added automatically.')
+def apply(patch_set, workdir, addbaselines, fromlayer, applyOption, commitOption):
     '''Runs the patchset in the given path in
      the provided workdir'''
 
@@ -268,8 +278,8 @@ def apply(patch_set, workdir, addbaselines, fromlayer):
                 repo = git.Repo(".")
                 patch_file = os.path.join(os.path.abspath(patchset_dir), patch.patch)
                 logger.info("Running patch %s!", patch.patch)
-                repo.git.apply(['-3', patch_file])
-                repo.git.commit(['-m', "Applied patch " + patch.patch])
+                repo.git.apply(applyOption.append(patch_file))
+                repo.git.commit(commitOption.extend(['-m', "Applied patch " + patch.patch]))
 
             except git.exc.GitError as error:
                 os.chdir(previous_work_dir)
