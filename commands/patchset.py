@@ -236,10 +236,9 @@ A patchset creating the following patches was created from the layer definitions
     required=False,
     multiple=True,
     help='Pass user-specific options to git commit. -m with an auto-generatedcommit messaage is added automatically.')
-def apply(patch_set, workdir, addbaselines, fromlayer, applyOption, commitOption):
+def apply(patch_set, workdir, addbaselines, fromlayer, applyoption, commitoption):
     '''Runs the patchset in the given path in
      the provided workdir'''
-
     patchset_dir = os.path.abspath(patch_set)
 
     if not os.path.isdir(patchset_dir):
@@ -278,12 +277,12 @@ def apply(patch_set, workdir, addbaselines, fromlayer, applyOption, commitOption
                 repo = git.Repo(".")
                 patch_file = os.path.join(os.path.abspath(patchset_dir), patch.patch)
                 logger.info("Running patch %s!", patch.patch)
-                if not applyOption:
-                    applyOption = []
-                repo.git.apply(applyOption.append(patch_file))
-                if not commitOption:
-                    commitOption = []
-                repo.git.commit(commitOption.extend(['-m', "Applied patch " + patch.patch]))
+                if not applyoption:
+                    applyoption = []
+                repo.git.apply(list(applyoption).append(patch_file))
+                if not commitoption:
+                    commitoption = []
+                repo.git.commit(list(commitoption).extend(['-m', "Applied patch " + patch.patch]))
 
             except git.exc.GitError as error:
                 os.chdir(previous_work_dir)
