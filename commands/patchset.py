@@ -228,12 +228,12 @@ A patchset creating the following patches was created from the layer definitions
     help='If we are adding baselines, start from this layer.')
 @click.option(
     '--applyOption', '-a',
-    required=false,
+    required=False,
     multiple=True,
     help='Pass user-specific options to git apply. The patch file is added at the very end of the command.')
 @click.option(
     '--commitOption', '-c',
-    required=false,
+    required=False,
     multiple=True,
     help='Pass user-specific options to git commit. -m with an auto-generatedcommit messaage is added automatically.')
 def apply(patch_set, workdir, addbaselines, fromlayer, applyOption, commitOption):
