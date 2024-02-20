@@ -226,12 +226,12 @@ A patchset creating the following patches was created from the layer definitions
     type=click.STRING,
     default='',
     help='If we are adding baselines, start from this layer.')
-@click.options(
+@click.option(
     '--applyOption', '-a',
     required=false,
     multiple=True,
     help='Pass user-specific options to git apply. The patch file is added at the very end of the command.')
-@click.options(
+@click.option(
     '--commitOption', '-c',
     required=false,
     multiple=True,
