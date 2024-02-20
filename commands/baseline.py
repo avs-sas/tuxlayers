@@ -86,7 +86,7 @@ def reverttobaseline(workdir, baseline, all):
     baselines = get_baselines_from_path(workdir, 0, True)[0]
     if all:
         logger.info("Resetting all repos to before the first baseline entry.")
-        if len(baselines) is 0:
+        if len(baselines) == 0:
             exit_application("Repository contains no baselines, nothing to remove!")
         main_repo = Repo(workdir)
         distance = -1
