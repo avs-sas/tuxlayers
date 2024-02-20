@@ -278,7 +278,11 @@ def apply(patch_set, workdir, addbaselines, fromlayer, applyOption, commitOption
                 repo = git.Repo(".")
                 patch_file = os.path.join(os.path.abspath(patchset_dir), patch.patch)
                 logger.info("Running patch %s!", patch.patch)
+                if not applyOption:
+                    applyOption = []
                 repo.git.apply(applyOption.append(patch_file))
+                if not commitOption:
+                    commitOption = []
                 repo.git.commit(commitOption.extend(['-m', "Applied patch " + patch.patch]))
 
             except git.exc.GitError as error:
