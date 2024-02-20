@@ -277,11 +277,13 @@ def apply(patch_set, workdir, addbaselines, fromlayer, applyoption, commitoption
                 repo = git.Repo(".")
                 patch_file = os.path.join(os.path.abspath(patchset_dir), patch.patch)
                 logger.info("Running patch %s!", patch.patch)
-                apply_option_list = list(applyoption).append(patch_file)
-                logger.info("Using parameters: %s", apply_option_list.join(' '))
+                apply_option_list = list(applyoption)
+                apply_option_list.append(patch_file)
+                logger.info("Using parameters: %s", (' ').join(apply_option_list))
                 repo.git.apply(apply_option_list)
-                commit_option_list = list(commitoption).extend(['-m', "Applied patch " + patch.patch])
-                logger.info("Using parameters: %s", commit_option_list.join(' '))
+                commit_option_list = list(commitoption)
+                commit_option_list.extend(['-m', "Applied patch " + patch.patch])
+                logger.info("Using parameters: %s", (' ').join(commit_option_list))
                 repo.git.commit(commit_option_list)
 
             except git.exc.GitError as error:
