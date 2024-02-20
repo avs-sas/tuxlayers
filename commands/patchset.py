@@ -235,7 +235,7 @@ A patchset creating the following patches was created from the layer definitions
     '--commitOption', '-c',
     required=False,
     multiple=True,
-    help='Pass user-specific options to git commit. -m with an auto-generatedcommit messaage is added automatically.')
+    help='Pass user-specific options to git commit. -a -m with an auto-generatedcommit messaage is added automatically.')
 def apply(patch_set, workdir, addbaselines, fromlayer, applyoption, commitoption):
     '''Runs the patchset in the given path in
      the provided workdir'''
@@ -282,7 +282,7 @@ def apply(patch_set, workdir, addbaselines, fromlayer, applyoption, commitoption
                 logger.info("Using parameters: %s", (' ').join(apply_option_list))
                 repo.git.apply(apply_option_list)
                 commit_option_list = list(commitoption)
-                commit_option_list.extend(['-m', "Applied patch " + patch.patch])
+                commit_option_list.extend(['-a', '-m', "Applied patch " + patch.patch])
                 logger.info("Using parameters: %s", (' ').join(commit_option_list))
                 repo.git.commit(commit_option_list)
 
