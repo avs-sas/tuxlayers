@@ -277,12 +277,12 @@ def apply(patch_set, workdir, addbaselines, fromlayer, applyoption, commitoption
                 repo = git.Repo(".")
                 patch_file = os.path.join(os.path.abspath(patchset_dir), patch.patch)
                 logger.info("Running patch %s!", patch.patch)
-                if not applyoption:
-                    applyoption = []
-                repo.git.apply(list(applyoption).append(patch_file))
-                if not commitoption:
-                    commitoption = []
-                repo.git.commit(list(commitoption).extend(['-m', "Applied patch " + patch.patch]))
+                apply_option_list = list(applyoption).append(patch_file)
+                logger.info("Using parameters: %s", apply_option_list.join(' '))
+                repo.git.apply(apply_option_list)
+                commit_option_list = list(commitoption).extend(['-m', "Applied patch " + patch.patch])
+                logger.info("Using parameters: %s", commit_option_list.join(' '))
+                repo.git.commit(commit_option_list)
 
             except git.exc.GitError as error:
                 os.chdir(previous_work_dir)
