@@ -19,7 +19,7 @@ import git
 
 import jinja2
 
-#from md2pdf.core import md2pdf
+from md2pdf.core import md2pdf
 
 from configuration import data
 from shared.helpers import exit_with_error, need_layer_config
