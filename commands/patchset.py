@@ -275,7 +275,7 @@ def apply(patch_set, workdir, addbaselines, fromlayer, fixwhitespace):
                 repo = git.Repo(".")
                 patch_file = os.path.join(os.path.abspath(patchset_dir), patch.patch)
                 logger.info("Running patch %s!", patch.patch)
-                if not fixWhitespace:
+                if not fixwhitespace:
                     repo.git.apply(['-3', patch_file])
                 else:
                     repo.git.apply(['--ignore-space-change', '--ignore-whitespace', '--reject', patch_file])
