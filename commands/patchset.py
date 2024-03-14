@@ -278,7 +278,7 @@ def apply(patch_set, workdir, addbaselines, fromlayer, fixwhitespace):
                 if not fixwhitespace:
                     repo.git.apply(['-3', patch_file])
                 else:
-                    repo.git.apply(['--ignore-space-change', '--ignore-whitespace', '--reject', patch_file])
+                    repo.git.apply(['--ignore-space-change', '--ignore-whitespace', '-3', patch_file])
                 repo.git.commit(['-m', "Applied patch " + patch.patch])
 
             except git.exc.GitError as error:
