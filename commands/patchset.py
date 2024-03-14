@@ -233,7 +233,7 @@ A patchset creating the following patches was created from the layer definitions
     type=click.STRING,
     default='',
     help='If we are adding baselines, start from this layer.')
-def apply(patch_set, workdir, addbaselines, fromlayer, fixWhitespace):
+def apply(patch_set, workdir, addbaselines, fromlayer, fixwhitespace):
     '''Runs the patchset in the given path in
      the provided workdir'''
 
