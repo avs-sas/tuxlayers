@@ -19,7 +19,7 @@ import git
 
 import jinja2
 
-from md2pdf.core import md2pdf
+#from md2pdf.core import md2pdf
 
 from configuration import data
 from shared.helpers import exit_with_error, need_layer_config
@@ -277,9 +277,10 @@ def apply(patch_set, workdir, addbaselines, fromlayer, fixwhitespace):
                 logger.info("Running patch %s!", patch.patch)
                 if not fixwhitespace:
                     repo.git.apply(['-3', patch_file])
+                    repo.git.commit(['-m', "Applied patch " + patch.patch])
                 else:
                     repo.git.apply(['--ignore-space-change', '--ignore-whitespace', '-3', patch_file])
-                repo.git.commit(['-m', "Applied patch " + patch.patch])
+                    repo.git.commit(['-m', '--allow-empty',  "Applied patch " + patch.patch])
 
             except git.exc.GitError as error:
                 os.chdir(previous_work_dir)
