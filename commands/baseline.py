@@ -78,15 +78,20 @@ def addbaseline(workdir, baseline):
 @click.option(
     '--all', '-a', is_flag=True, required=False,
     type=click.BOOL, default=False, help='If set, all baselines are removed.')
+@click.option(
+    '--clean', '-c', is_flag=True, required=False,
+    type=click.BOOL, default=False, help='If set, also performs git clean -xfd on all repos after reset, removing non-tracked files.')
 @click.argument('baseline', type=click.STRING, default="")
-def reverttobaseline(workdir, baseline, all):
+def reverttobaseline(workdir, baseline, all, clean):
     '''Sets the repository structure to the commit before the one marked
      by the baseline (removing all later commits and the baseline commit).'''
     workdir = normalize_workdir_path(workdir)
     baselines = get_baselines_from_path(workdir, 0, True)[0]
     if all:
         logger.info("Resetting all repos to before the first baseline entry.")
-        if len(baselines) is 0:
+        if len(baselines) == 0:
+            if clean:
+                clean_workdir(workdir)
             exit_application("Repository contains no baselines, nothing to remove!")
         main_repo = Repo(workdir)
         distance = -1
@@ -127,6 +132,17 @@ def reverttobaseline(workdir, baseline, all):
             "Resetting all repos to the commit before baseline %s", baseline)
         reset_hard_to_baseline(workdir, baselines[baseline])
 
+    if clean:
+        clean_workdir(workdir)
+
+def clean_workdir(workdir):
+    logger.info("Cleaning workdir: %s", workdir)
+    try:
+        repo = Repo(workdir)
+        repo.git.clean(['-xfd'])
+        repo.git.submodule(['foreach', '--recursive', 'git', 'clean', '-xfd'])
+    except git.exc.GitError as error:
+        exit_with_error("Git error: " + str(error))
 
 @click.command()
 @click.option(
