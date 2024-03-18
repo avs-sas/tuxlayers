@@ -44,17 +44,29 @@ logger = logging.getLogger(__name__)
 @click.option(
     '--all_patchsets', '-a', is_flag=True, required=False,
     type=click.BOOL, default=False, help='If set, all full patchsets are created.')
+@click.option(
+    '--filter_include', '-i',
+    type=click.STRING,
+    multiple=True,
+    required=False,
+    help='''The patch is only included if at least one of the tags defined here is present here that are configured for the patch.''')
+@click.option(
+    '--filter_exclude', '-e',
+    type=click.STRING,
+    multiple=True,
+    required=False,
+    help='''The patch is NOT included if one or more tags are present here that are configured for the patch.''')
 @click.argument('outpath', type=click.Path())
 @click.pass_context
-def patchset(ctx, layer, patchdir, outpath, all_patchsets):
+def patchset(ctx, layer, patchdir, outpath, all_patchsets, filter_include, filter_exclude):
     '''Create a patchset for a given layer. If "all" is selected: for each full
     path through the tree (e.g. for each leaf) creates a full patchset.'''
     need_layer_config(ctx)
     if all_patchsets:
-        create_all_sets(ctx, patchdir, outpath)
+        create_all_sets(ctx, patchdir, outpath, filter_include, filter_exclude)
     else:
         if layer:
-            _patchset_internal(ctx, layer, patchdir, outpath)
+            _patchset_internal(ctx, layer, patchdir, outpath, filter_include, filter_exclude)
         else:
             exit_with_error("You need to specify either a layer using -l or -a for all layers.")
 
@@ -291,7 +303,7 @@ def get_all_referred_layers(layer, tree):
         node = tree.parent(node.identifier)
     return reversed(layers)
 
-def create_all_sets(ctx, patchdir, outpath):
+def create_all_sets(ctx, patchdir, outpath, filter_include, filter_exclude):
     """For each full path through the tree
     (e.g. for each leaf) creates a full patchset"""
 
@@ -302,12 +314,13 @@ def create_all_sets(ctx, patchdir, outpath):
     for leaf in tree.leaves():
         logger.info("Creating patchset for leaf %s", leaf.identifier)
         _patchset_internal(ctx, leaf.identifier, patchdir,
-                           os.path.join(outpath, leaf.identifier))
+                           os.path.join(outpath, leaf.identifier),
+                           filter_include, filter_exclude)
         logger.info("Done!")
     logger.info("Created %d full patchsets", len(tree.leaves()))
 
 
-def create_patchset(ctx, layer):
+def create_patchset(ctx, layer, filter_include, filter_exclude):
     '''Creates a patchset for the selected layer'''
     tree = ctx.obj['LAYER_TREE']
 
@@ -325,18 +338,53 @@ def create_patchset(ctx, layer):
                 baseline=referred_layer.id)
             patch_set.patches.append(baseline_patch_entry)
             current_layer = referred_layer.id
-        patch_set.patches.extend(referred_layer.patches)
+        # if no filter is defined: just add all patches:
+        #logger.info(referred_layer.patches)
+        if len(filter_exclude) == 0 and len(filter_include) == 0:
+            patch_set.patches.extend(referred_layer.patches)
+        else:
+            # else: we check every patch it if fits the include/exclude pattern
+            # first: include, then: exclude
+            for patch in referred_layer.patches:
+                tags = []
+                logger.info(patch.tags)
+                if patch.tags is not None:
+                    logger.info(tags)
+                    tags = [i.strip() for i in patch.tags.split(',')]
+                #logger.info(tags)
+                exclude = False
+                include = True
+                # check for include/exclude filter before appending:
+                if len(filter_include) > 0:
+                    #logger.info("Checking for include filters: %s", ','.join(filter_include))
+                    include = False
+                    if not include:
+                        for filter in filter_include:
+                            #logger.info(filter)
+                            #logger.info(patch.tags)
+                            if filter in tags:
+                                include = True
+                if len(filter_exclude) > 0:
+                    #logger.info("Checking for exclude filters: %s", ','.join(filter_exclude))
+                    for filter in filter_exclude:
+                        if filter in tags:
+                            exclude = True
+                if not exclude and include:
+                    logger.info("Including patch %s!", patch)
+                    #ok, we append the patch!
+                    patch_set.patches.append(patch)
+
     logger.info("Created patchset containing %d patches",
                 len(patch_set.patches))
 
     return patch_set
 
-def _patchset_internal(ctx, layer, patchdir, outpath):
+def _patchset_internal(ctx, layer, patchdir, outpath, filter_include, filter_exclude):
     '''Create a patchset for a given layer.'''
     if os.path.exists(outpath):
         exit_with_error("Outpath may not exist: " + outpath)
 
-    patch_set = create_patchset(ctx, layer)
+    patch_set = create_patchset(ctx, layer, filter_include, filter_exclude)
     # write patch info file to our folder...
     logger.info("Creating output folder %s", outpath)
     os.makedirs(outpath)
