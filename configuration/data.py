@@ -17,7 +17,7 @@ class PatchConfig():
     """Contains one patch for a given subdir/path"""
     basePath: str
     patch: str
-    tags: str
+    tags: str = ""
     updateModulesAfterPatch: bool = False
     # This is a way to include a baseline entry into a PatchConfig to apply.
     # There might be a more "python" way to do this though...

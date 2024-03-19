@@ -93,7 +93,6 @@ def parse_tree_from_layers(ctx):
             layers[layer_id] = layer_config
 
     layer_tree = treelib.Tree()
-    logger.info(layer_tree)
     if base_layer is None:
         return layer_tree
     layer_tree.create_node(base_layer.id, base_layer.id, data=base_layer)
@@ -119,16 +118,11 @@ def load_layer_config(config_folder, layer_filename):
         exit_with_error("Could not find " + layer_file)
 
     with open(layer_file, encoding='UTF-8') as json_content:
-        logger.info(layer_file)
         # Further file processing goes here
         data_json = json_content.read()
         try:
             # pylint: disable=no-member
             data_layer = PatchLayer.from_json(data_json)
-            logger.info("lasdalsijd")
-            logger.info(data_layer)
-            logger.info("lasdalsijd")
-
             return data_layer
         except ValueError as value_error:
             exit_with_error(value_error)
