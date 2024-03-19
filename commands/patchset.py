@@ -122,7 +122,7 @@ def document(ctx, layer, patchdir, templatefile, misc, topdf, outpath):
 
     logger.info("Creating documentation for layer %s, writing to %s", layer, outpath)
     doc_data = data.Documentation()
-    patch_set = create_patchset(ctx, layer)
+    patch_set = create_patchset(ctx, layer, "", "")
     for patch in patch_set.patches:
         if not patch.is_patch():
             continue
