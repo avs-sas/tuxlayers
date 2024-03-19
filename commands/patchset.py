@@ -233,12 +233,19 @@ A patchset creating the following patches was created from the layer definitions
     default=False,
     help='If set, baselines found in the patch configuration are added to the target repo.')
 @click.option(
+    '--fixWhitespace',
+    is_flag=True,
+    required=False,
+    type=click.BOOL,
+    default=False,
+    help='If set, instead of running if "git apply -3" and the commit afterwards does not work, we re-try using "git apply --ignore-space-change --ignore-whitespace --reject')
+@click.option(
     '--fromLayer', '-f',
     required=False,
     type=click.STRING,
     default='',
     help='If we are adding baselines, start from this layer.')
-def apply(patch_set, workdir, addbaselines, fromlayer):
+def apply(patch_set, workdir, addbaselines, fromlayer, fixwhitespace):
     '''Runs the patchset in the given path in
      the provided workdir'''
 
@@ -280,8 +287,25 @@ def apply(patch_set, workdir, addbaselines, fromlayer):
                 repo = git.Repo(".")
                 patch_file = os.path.join(os.path.abspath(patchset_dir), patch.patch)
                 logger.info("Running patch %s!", patch.patch)
-                repo.git.apply(['-3', patch_file])
-                repo.git.commit(['-m', "Applied patch " + patch.patch])
+                if not fixwhitespace:
+                    repo.git.apply(['-3', patch_file])
+                    repo.git.commit(['-m', "Applied patch " + patch.patch])
+                else:
+                    # If we have the "fix whitespace" argument, we do the following:
+                    # First: try it "normally" as above. If this does not help we restore and retry /w ignore whitespace.
+                    # Only if this breaks we raise an exception on the outside and exit with a corresponding error...
+                    try:
+                        repo.git.apply(['-3', patch_file])
+                    except git.exc.GitError as error:
+                        logger.info("Retrying to apply patch %s with ignored whitespace.", patch_file)
+                        repo.git.restore(['--staged', '--', '.'])
+                        repo.git.restore(['--', '.'])
+                        repo.git.apply(['--ignore-space-change', '--ignore-whitespace', '-3', patch_file])
+                    try:
+                        repo.git.commit(['-m', "Applied patch " + patch.patch])
+                    except git.exc.GitError as error:
+                        logger.info("Retrying to commit patch %s with allowing empty commits. This might be a result when ignoring whitespace before.", patch_file)
+                        repo.git.commit(['-m', '--allow-empty',  "Applied patch " + patch.patch])
 
             except git.exc.GitError as error:
                 os.chdir(previous_work_dir)
