@@ -17,6 +17,7 @@ class PatchConfig():
     """Contains one patch for a given subdir/path"""
     basePath: str
     patch: str
+    tags: str = ""
     updateModulesAfterPatch: bool = False
     # This is a way to include a baseline entry into a PatchConfig to apply.
     # There might be a more "python" way to do this though...
@@ -33,6 +34,10 @@ class PatchConfig():
     def is_patch(self) -> bool:
         '''True if a patch is defined'''
         return len(self.patch) > 0
+
+    def has_tags(self) -> bool:
+        '''True if at least one filter is defined'''
+        return len(self.tags) > 0
 
 @dataclass_json
 @dataclass

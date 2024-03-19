@@ -4,7 +4,6 @@ dataclasses_json==0.5.7
 GitPython==3.1.30
 Jinja2==3.0.3
 md2pdf==1.0.1
-pip==22.0.2
 PyDriller==2.4.1
 setuptools==59.6.0
 treelib==1.6.1
