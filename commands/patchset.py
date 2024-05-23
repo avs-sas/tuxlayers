@@ -19,8 +19,6 @@ import git
 
 import jinja2
 
-from md2pdf.core import md2pdf
-
 from configuration import data
 from shared.helpers import exit_with_error, need_layer_config
 
@@ -101,14 +99,9 @@ def patchset(ctx, layer, patchdir, outpath, all_patchsets, filters_include, filt
     -m my_key 42 will result in typing "42" upon
     referencing {{data.misc.my_key}}'''
 )
-@click.option(
-    '--topdf', is_flag=True, required=False,
-    type=click.BOOL, default=False,
-    help='''If we use a markdown file / template as an input,
-     convert it to pdf after generating it.''')
 @click.argument('outpath', type=click.Path(), default=".")
 @click.pass_context
-def document(ctx, layer, patchdir, templatefile, misc, topdf, outpath):
+def document(ctx, layer, patchdir, templatefile, misc, outpath):
     '''Create a documentation for a given layer. The -path you
     provide needs to exists and defaults to \".\". The filename
      will be created using the template filename the a timestamp prefix;
@@ -208,12 +201,6 @@ A patchset creating the following patches was created from the layer definitions
     logger.info("Writing documenatation to %s in %s", result_filename, outpath)
     with open(os.path.join(outpath, result_filename), 'w', encoding="utf-8") as outfile:
         outfile.write(result)
-    if topdf:
-        if not result_filename.endswith(".md"):
-            exit_with_error('''md2pfd only applicable for .md templates.''')
-        pdf_filename = os.path.splitext(result_filename)[0] + ".pdf"
-        md2pdf(os.path.join(outpath, pdf_filename),
-               md_file_path=os.path.join(outpath, result_filename))
 
 @click.command()
 @click.option(
