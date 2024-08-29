@@ -330,9 +330,17 @@ def add_scripted(work_dir, scripts_dir, script):
     # lets just return to where we came from...
     os.chdir(previous_work_dir)
 
+    # now, we add commits to all of the repos...
+    baseline.add_recursive_commit(work_dir, "Added result of running script " + script)
+
+
 def add_files(work_dir, files_dir, files):
     """ Executes a configured copy task. """
     logger.info("Found copy task in patch config.")
+
+    # now, we add commits to all of the repos...
+    baseline.add_recursive_commit(work_dir, "Added result of running script " + script)
+
 
 
 def add_baseline(work_dir, patch):
