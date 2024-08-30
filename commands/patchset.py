@@ -14,7 +14,7 @@ import string
 import copy
 import sys
 import subprocess
-
+import glob
 import click
 import git
 
@@ -338,10 +338,20 @@ def add_files(work_dir, files_dir, files):
     """ Executes a configured copy task. """
     logger.info("Found copy task in patch config.")
 
+    # this is rather staightforward:  just use glob.glob() to recurse through the provided files
+    # and then copy this to our workdir (creating folders etc. if needed)
+    source_dir = os.path.join(files_dir, files.copySourceDir)
+
+    for file_to_copy in glob.glob(files.copyPattern, recursive=True, root_dir=source_dir):
+        if os.path.isfile(os.path.join(source_dir, file_to_copy)):
+            os.makedirs(os.path.join(".", os.path.dirname(file_to_copy)), exist_ok=True)
+            shutil.copy(os.path.join(source_dir, file_to_copy), os.path.join(".", file_to_copy))
+
     # now, we add commits to all of the repos...
-    baseline.add_recursive_commit(work_dir, "Added result of running script " + script)
-
-
+    baseline.add_recursive_commit(
+        work_dir,
+        "Added result copy command from folder " + files.copySourceDir + " with pattern " + files.copyPattern
+    )
 
 def add_baseline(work_dir, patch):
     logger.info("Found baseline in patch config.")
