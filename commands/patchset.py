@@ -285,10 +285,13 @@ def apply(patch_set, workdir, addbaselines, fromlayer, fixwhitespace):
         if adding_patches:
             if patch.is_baseline():
                 add_baseline(work_dir, patch)
+                continue
             if patch.is_script():
                 add_scripted(work_dir, scripts_dir, patch)
+                continue
             if patch.is_copy():
                 add_files(work_dir, files_dir, patch)
+                continue
             #default to patches... this is ok since valid() checks for this.
             else:
                 add_patches(fixwhitespace, patchset_dir, previous_work_dir, patch)
@@ -331,7 +334,7 @@ def add_scripted(work_dir, scripts_dir, script):
     os.chdir(previous_work_dir)
 
     # now, we add commits to all of the repos...
-    baseline.add_recursive_commit(work_dir, "Added result of running script " + script)
+    baseline.add_recursive_commit(work_dir, "Added result of running script " + script.script)
 
 
 def add_files(work_dir, files_dir, files):
@@ -511,50 +514,59 @@ def collect_patches(patchdir, patch_set, target_path, file_dir, script_dir):
         if patch.is_baseline():
             continue
         if patch.is_script():
-            source_dir = script_dir
-            target_dir = os.path.join(target_path, "scripts")
-            if os.path.isfile(os.path.join(source_dir, patch.script)):
-                os.makedirs(os.path.join(target_dir, os.path.dirname(patch.script)), exist_ok=True)
-                logger.info("Copying script %s ...", patch.script)
-                shutil.copy(os.path.join(source_dir, patch.script), os.path.join(target_dir, patch.script))
-            logger.info(patch)
-            for resource in patch.scriptResources:
-                logger.info(resource)
-                logger.info(glob.glob(resource, recursive=True, root_dir=source_dir))
-                for resource_to_copy in glob.glob(resource, recursive=True, root_dir=source_dir):
-                    if os.path.isfile(os.path.join(source_dir, resource_to_copy)):
-                        os.makedirs(os.path.join(target_dir, os.path.dirname(resource_to_copy)), exist_ok=True)
-                        logger.info("Copying script resource %s ...", resource_to_copy)
-                        shutil.copy(os.path.join(source_dir, resource_to_copy), os.path.join(target_dir, resource_to_copy))
+            collect_script(target_path, script_dir, patch)
 
             continue
         if patch.is_copy():
-            source_dir = os.path.join(file_dir, patch.copySourceDir)
-            target_dir = os.path.join(target_path, "files", patch.copySourceDir)
-            #scripts_dir = os.path.join(patchset_dir, "scripts")
-
-            for file_to_copy in glob.glob(patch.copyPattern, recursive=True, root_dir=source_dir):
-                if os.path.isfile(os.path.join(source_dir, file_to_copy)):
-                    os.makedirs(os.path.join(target_dir, os.path.dirname(file_to_copy)), exist_ok=True)
-                    logger.info("Copying file %s ...", file_to_copy)
-                    shutil.copy(os.path.join(source_dir, file_to_copy), os.path.join(target_dir, file_to_copy))
+            collect_files(target_path, file_dir, patch)
 
             continue
         #default: patch...
-        patch_path = os.path.dirname(patch.patch)
-        patch_filename = os.path.basename(patch.patch)
-        os.makedirs(os.path.join(target_path, patch.basePath), exist_ok=True)
-        new_filename = os.path.join(patch.basePath, str(
+        collect_patch(patchdir, target_path, current_index, patch)
+    return patch_set_copy
+
+def collect_patch(patchdir, target_path, current_index, patch):
+    patch_path = os.path.dirname(patch.patch)
+    patch_filename = os.path.basename(patch.patch)
+    os.makedirs(os.path.join(target_path, patch.basePath), exist_ok=True)
+    new_filename = os.path.join(patch.basePath, str(
             current_index).zfill(5) + "_" + patch_filename)
-        try:
-            shutil.copy(
+    try:
+        shutil.copy(
                 os.path.join(patchdir, patch_path, patch_filename),
                 os.path.join(target_path, new_filename))
-        except FileNotFoundError as error:
-            exit_with_error(error)
-        patch.patch = new_filename
-        current_index += 1
-    return patch_set_copy
+    except FileNotFoundError as error:
+        exit_with_error(error)
+    patch.patch = new_filename
+    current_index += 1
+
+def collect_files(target_path, file_dir, patch):
+    source_dir = os.path.join(file_dir, patch.copySourceDir)
+    target_dir = os.path.join(target_path, "files", patch.copySourceDir)
+            #scripts_dir = os.path.join(patchset_dir, "scripts")
+
+    for file_to_copy in glob.glob(patch.copyPattern, recursive=True, root_dir=source_dir):
+        if os.path.isfile(os.path.join(source_dir, file_to_copy)):
+            os.makedirs(os.path.join(target_dir, os.path.dirname(file_to_copy)), exist_ok=True)
+            logger.info("Copying file %s ...", file_to_copy)
+            shutil.copy(os.path.join(source_dir, file_to_copy), os.path.join(target_dir, file_to_copy))
+
+def collect_script(target_path, script_dir, patch):
+    source_dir = script_dir
+    target_dir = os.path.join(target_path, "scripts")
+    if os.path.isfile(os.path.join(source_dir, patch.script)):
+        os.makedirs(os.path.join(target_dir, os.path.dirname(patch.script)), exist_ok=True)
+        logger.info("Copying script %s ...", patch.script)
+        shutil.copy(os.path.join(source_dir, patch.script), os.path.join(target_dir, patch.script))
+    logger.info(patch)
+    for resource in patch.scriptResources:
+        logger.info(resource)
+        logger.info(glob.glob(resource, recursive=True, root_dir=source_dir))
+        for resource_to_copy in glob.glob(resource, recursive=True, root_dir=source_dir):
+            if os.path.isfile(os.path.join(source_dir, resource_to_copy)):
+                os.makedirs(os.path.join(target_dir, os.path.dirname(resource_to_copy)), exist_ok=True)
+                logger.info("Copying script resource %s ...", resource_to_copy)
+                shutil.copy(os.path.join(source_dir, resource_to_copy), os.path.join(target_dir, resource_to_copy))
 
 
 # we need this since we want $ in our resulting file...
