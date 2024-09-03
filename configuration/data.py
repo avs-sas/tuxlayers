@@ -33,6 +33,10 @@ class PatchConfig():
     # Same here but /w script command. Scripts are expected to be located in the scripts subdir of config
     # and are assumed to run in basePath.
     script: str = ""
+    # This may contain a list of files and/or glob wildcards (like resource/**/*) that gets copied with
+    # the script file itself.
+    scriptResources: list[str] = field(default_factory=list)
+
     def valid(self) -> bool:
         '''True if baseline xor patch xor script xor copy'''
         return self.is_baseline() ^ self.is_patch() ^ self.is_script() ^ self.is_copy()

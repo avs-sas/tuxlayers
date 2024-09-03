@@ -482,7 +482,7 @@ def _patchset_internal(ctx, layer, patchdir, scriptdir, filedir, outpath, filter
     # fetch the patches and copy them to the outpath.
     # Rename patches in order and update the patch_set info
     logger.info("Collecting patches...")
-    patch_set = collect_patches(patchdir, patch_set, outpath)
+    patch_set = collect_patches(patchdir, patch_set, outpath, filedir, scriptdir)
 
     logger.info("Writing patch file...")
     with open(os.path.join(outpath, "patches.json"), "w", encoding="utf-8") as outfile:
@@ -494,7 +494,7 @@ def _patchset_internal(ctx, layer, patchdir, scriptdir, filedir, outpath, filter
     create_run_patches(patch_set, outpath)
 
 
-def collect_patches(patchdir, patch_set, target_path):
+def collect_patches(patchdir, patch_set, target_path, file_dir, script_dir):
     """Collects the patch files, renames them in order
     and updates their information in the patch_set.
     Returns a (deep) copy of the patch_set with modified
@@ -510,6 +510,37 @@ def collect_patches(patchdir, patch_set, target_path):
     for patch in patch_set_copy.patches:
         if patch.is_baseline():
             continue
+        if patch.is_script():
+            source_dir = script_dir
+            target_dir = os.path.join(target_path, "scripts")
+            if os.path.isfile(os.path.join(source_dir, patch.script)):
+                os.makedirs(os.path.join(target_dir, os.path.dirname(patch.script)), exist_ok=True)
+                logger.info("Copying script %s ...", patch.script)
+                shutil.copy(os.path.join(source_dir, patch.script), os.path.join(target_dir, patch.script))
+            logger.info(patch)
+            for resource in patch.scriptResources:
+                logger.info(resource)
+                logger.info(glob.glob(resource, recursive=True, root_dir=source_dir))
+                for resource_to_copy in glob.glob(resource, recursive=True, root_dir=source_dir):
+                    if os.path.isfile(os.path.join(source_dir, resource_to_copy)):
+                        os.makedirs(os.path.join(target_dir, os.path.dirname(resource_to_copy)), exist_ok=True)
+                        logger.info("Copying script resource %s ...", resource_to_copy)
+                        shutil.copy(os.path.join(source_dir, resource_to_copy), os.path.join(target_dir, resource_to_copy))
+
+            continue
+        if patch.is_copy():
+            source_dir = os.path.join(file_dir, patch.copySourceDir)
+            target_dir = os.path.join(target_path, "files", patch.copySourceDir)
+            #scripts_dir = os.path.join(patchset_dir, "scripts")
+
+            for file_to_copy in glob.glob(patch.copyPattern, recursive=True, root_dir=source_dir):
+                if os.path.isfile(os.path.join(source_dir, file_to_copy)):
+                    os.makedirs(os.path.join(target_dir, os.path.dirname(file_to_copy)), exist_ok=True)
+                    logger.info("Copying file %s ...", file_to_copy)
+                    shutil.copy(os.path.join(source_dir, file_to_copy), os.path.join(target_dir, file_to_copy))
+
+            continue
+        #default: patch...
         patch_path = os.path.dirname(patch.patch)
         patch_filename = os.path.basename(patch.patch)
         os.makedirs(os.path.join(target_path, patch.basePath), exist_ok=True)
