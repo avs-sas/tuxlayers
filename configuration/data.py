@@ -22,10 +22,32 @@ class PatchConfig():
     # This is a way to include a baseline entry into a PatchConfig to apply.
     # There might be a more "python" way to do this though...
     baseline: str = ""
+    # If this is set and patch is empty, handle this as a "copy" command instead of
+    # a patch command. Again: this feels wrong but I found no other way in dataclass_json to make 
+    # this work nicely (e.g. /w multiple encapsulated "command-style" types instead of this)
+    copyPattern: str = ""
+    # Files are assumed to be located in the files subdir of config. If copySourceDir is set this is 
+    # assumed to be a subdir of config/files. You can use wildcards that glob() understands. 
+    # Files will be copied to a folder relative to basePath.
+    copySourceDir: str = ""
+    # Same here but /w script command. Scripts are expected to be located in the scripts subdir of config
+    # and are assumed to run in basePath.
+    script: str = ""
+    # This may contain a list of files and/or glob wildcards (like resource/**/*) that gets copied with
+    # the script file itself.
+    scriptResources: list[str] = field(default_factory=list)
 
     def valid(self) -> bool:
-        '''True if baseline xor patch'''
-        return self.is_baseline() ^ self.is_patch()
+        '''True if baseline xor patch xor script xor copy'''
+        return self.is_baseline() ^ self.is_patch() ^ self.is_script() ^ self.is_copy()
+
+    def is_script(self) -> bool:
+        '''True if a script command is configured '''
+        return len(self.script) > 0
+
+    def is_copy(self) -> bool:
+        '''True if a script command is configured '''
+        return len(self.copyPattern) > 0
 
     def is_baseline(self) -> bool:
         '''True if is a baseline'''

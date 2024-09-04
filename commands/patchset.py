@@ -13,7 +13,8 @@ import stat
 import string
 import copy
 import sys
-
+import subprocess
+import glob
 import click
 import git
 
@@ -40,6 +41,18 @@ logger = logging.getLogger(__name__)
     help='''Target folder that holds patches
     configured in the used configuration. Defaults to config/patches above the executable.''')
 @click.option(
+    '--scriptdir', '-s', required=False,
+    type=click.Path(),
+    default=os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "config", "scripts"),
+    help='''Target folder that holds scripts
+    configured in the used configuration. Defaults to config/scripts above the executable.''')
+@click.option(
+    '--filedir', '-f', required=False,
+    type=click.Path(),
+    default=os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "config", "files"),
+    help='''Target folder that holds files and folder structures
+    configured in the used configuration. Defaults to config/files above the executable.''')
+@click.option(
     '--all_patchsets', '-a', is_flag=True, required=False,
     type=click.BOOL, default=False, help='If set, all full patchsets are created.')
 @click.option(
@@ -56,15 +69,15 @@ logger = logging.getLogger(__name__)
     help='''The patch is NOT included if one or more tags are present here that are configured for the patch.''')
 @click.argument('outpath', type=click.Path())
 @click.pass_context
-def patchset(ctx, layer, patchdir, outpath, all_patchsets, filters_include, filters_exclude):
+def patchset(ctx, layer, patchdir, scriptdir, filedir, outpath, all_patchsets, filters_include, filters_exclude):
     '''Create a patchset for a given layer. If "all" is selected: for each full
     path through the tree (e.g. for each leaf) creates a full patchset.'''
     need_layer_config(ctx)
     if all_patchsets:
-        create_all_sets(ctx, patchdir, outpath, filters_include, filters_exclude)
+        create_all_sets(ctx, patchdir, scriptdir, filedir, outpath, filters_include, filters_exclude)
     else:
         if layer:
-            _patchset_internal(ctx, layer, patchdir, outpath, filters_include, filters_exclude)
+            _patchset_internal(ctx, layer, patchdir, scriptdir, filedir, outpath, filters_include, filters_exclude)
         else:
             exit_with_error("You need to specify either a layer using -l or -a for all layers.")
 
@@ -241,6 +254,11 @@ def apply(patch_set, workdir, addbaselines, fromlayer, fixwhitespace):
     if not os.path.isdir(patchset_dir):
         exit_with_error("Patch dir invalid")
 
+    # these are optional and only need to be present if a script or file task is
+    # included. Existance will be checked there.
+    files_dir = os.path.join(patchset_dir, "files")
+    scripts_dir = os.path.join(patchset_dir, "scripts")
+
     if not addbaselines and len(fromlayer) != 0:
         exit_with_error('''Found the 'fromlayer' argument but missing
                         'addBaselines' - did you forget to add this?''')
@@ -261,44 +279,115 @@ def apply(patch_set, workdir, addbaselines, fromlayer, fixwhitespace):
         os.chdir(os.path.join(work_dir, patch.basePath))
         if not patch.valid():
             exit_with_error("Invalid patch configuration: " + str(patch))
-        if patch.is_baseline():
-            logger.info("Found baseline in patch config.")
-            # check if we need to activate patching
-            if not adding_patches and patch.baseline == fromlayer:
-                logger.info("Found start layer! Patching now!")
-                adding_patches = True
-            if adding_patches:
-                baseline.add_baseline_internal(work_dir, patch.baseline)
-        elif adding_patches:
-            try:
-                repo = git.Repo(".")
-                patch_file = os.path.join(os.path.abspath(patchset_dir), patch.patch)
-                logger.info("Running patch %s!", patch.patch)
-                if not fixwhitespace:
-                    repo.git.apply(['-3', patch_file])
-                    repo.git.commit(['-m', "Applied patch " + patch.patch])
-                else:
+        if not adding_patches and patch.baseline == fromlayer:
+            logger.info("Found start layer! Patching now!")
+            adding_patches = True
+        if adding_patches:
+            if patch.is_baseline():
+                add_baseline(work_dir, patch)
+                continue
+            if patch.is_script():
+                add_scripted(work_dir, scripts_dir, patch)
+                continue
+            if patch.is_copy():
+                add_files(work_dir, files_dir, patch)
+                continue
+            #default to patches... this is ok since valid() checks for this.
+            else:
+                add_patches(fixwhitespace, patchset_dir, previous_work_dir, patch)
+
+        os.chdir(previous_work_dir)
+
+def add_scripted(work_dir, scripts_dir, script):
+    """ Executes a configured script task. """
+    logger.info("Found script task in patch config.")
+    previous_work_dir = work_dir
+    if not os.path.isdir(scripts_dir):
+        exit_with_error("scripts folder missing in patchset!")
+    # now we just run the script in the base folder
+    try:
+        result = subprocess.run(
+            [os.path.join(scripts_dir, script.script)],
+            capture_output = True,
+            text = True,
+            shell = True,
+            check = True
+        )
+
+        if result.stdout:
+            logger.info("Script %s ran and wrote this to stdout:", script.script)
+            logger.info(result.stdout)
+        else:
+            logger.info("Script %s ran and wrote nothing to stdout.", script.script)
+
+        if result.stderr:
+            logger.info("Script %s ran and wrote this to stderr:", script.script)
+            logger.info(result.stderr)
+        else:
+            logger.info("Script %s ran and wrote nothing to stderr.", script.script)
+    except subprocess.CalledProcessError as error:
+        logger.error(str(error))
+        exit_with_error("Script " + script.script + " returned " + str(error.returncode) + " when running. Exiting!")
+
+    # Just in case the script misbehaved and changed the current folder
+    # lets just return to where we came from...
+    os.chdir(previous_work_dir)
+
+    # now, we add commits to all of the repos...
+    baseline.add_recursive_commit(work_dir, "Added result of running script " + script.script)
+
+
+def add_files(work_dir, files_dir, files):
+    """ Executes a configured copy task. """
+    logger.info("Found copy task in patch config.")
+
+    # this is rather staightforward:  just use glob.glob() to recurse through the provided files
+    # and then copy this to our workdir (creating folders etc. if needed)
+    source_dir = os.path.join(files_dir, files.copySourceDir)
+
+    for file_to_copy in glob.glob(files.copyPattern, recursive=True, root_dir=source_dir):
+        if os.path.isfile(os.path.join(source_dir, file_to_copy)):
+            os.makedirs(os.path.join(".", os.path.dirname(file_to_copy)), exist_ok=True)
+            shutil.copy(os.path.join(source_dir, file_to_copy), os.path.join(".", file_to_copy))
+
+    # now, we add commits to all of the repos...
+    baseline.add_recursive_commit(
+        work_dir,
+        "Added result copy command from folder " + files.copySourceDir + " with pattern " + files.copyPattern
+    )
+
+def add_baseline(work_dir, patch):
+    logger.info("Found baseline in patch config.")
+    baseline.add_baseline_internal(work_dir, patch.baseline)
+
+def add_patches(fixwhitespace, patchset_dir, previous_work_dir, patch):
+    try:
+        repo = git.Repo(".")
+        patch_file = os.path.join(os.path.abspath(patchset_dir), patch.patch)
+        logger.info("Running patch %s!", patch.patch)
+        if not fixwhitespace:
+            repo.git.apply(['-3', patch_file])
+            repo.git.commit(['-m', "Applied patch " + patch.patch])
+        else:
                     # If we have the "fix whitespace" argument, we do the following:
                     # First: try it "normally" as above. If this does not help we restore and retry /w ignore whitespace.
                     # Only if this breaks we raise an exception on the outside and exit with a corresponding error...
-                    try:
-                        repo.git.apply(['-3', patch_file])
-                    except git.exc.GitError as error:
-                        logger.info("Retrying to apply patch %s with ignored whitespace.", patch_file)
-                        repo.git.restore(['--staged', '--', '.'])
-                        repo.git.restore(['--', '.'])
-                        repo.git.apply(['--ignore-space-change', '--ignore-whitespace', '-3', patch_file])
-                    try:
-                        repo.git.commit(['-m', "Applied patch " + patch.patch])
-                    except git.exc.GitError as error:
-                        logger.info("Retrying to commit patch %s with allowing empty commits. This might be a result when ignoring whitespace before.", patch_file)
-                        repo.git.commit(['-m', '--allow-empty',  "Applied patch " + patch.patch])
+            try:
+                repo.git.apply(['-3', patch_file])
+            except git.exc.GitError:
+                logger.info("Retrying to apply patch %s with ignored whitespace.", patch_file)
+                repo.git.restore(['--staged', '--', '.'])
+                repo.git.restore(['--', '.'])
+                repo.git.apply(['--ignore-space-change', '--ignore-whitespace', '-3', patch_file])
+            try:
+                repo.git.commit(['-m', "Applied patch " + patch.patch])
+            except git.exc.GitError:
+                logger.info("Retrying to commit patch %s with allowing empty commits. This might be a result when ignoring whitespace before.", patch_file)
+                repo.git.commit(['-m', '--allow-empty',  "Applied patch " + patch.patch])
 
-            except git.exc.GitError as error:
-                os.chdir(previous_work_dir)
-                exit_with_error("Git error: " + str(error))
-
+    except git.exc.GitError as error:
         os.chdir(previous_work_dir)
+        exit_with_error("Git error: " + str(error))
 
 
 def get_all_referred_layers(layer, tree):
@@ -314,7 +403,7 @@ def get_all_referred_layers(layer, tree):
         node = tree.parent(node.identifier)
     return reversed(layers)
 
-def create_all_sets(ctx, patchdir, outpath, filters_include, filters_exclude):
+def create_all_sets(ctx, patchdir, scriptdir, filedir, outpath, filters_include, filters_exclude):
     """For each full path through the tree
     (e.g. for each leaf) creates a full patchset"""
 
@@ -325,6 +414,7 @@ def create_all_sets(ctx, patchdir, outpath, filters_include, filters_exclude):
     for leaf in tree.leaves():
         logger.info("Creating patchset for leaf %s", leaf.identifier)
         _patchset_internal(ctx, leaf.identifier, patchdir,
+                           scriptdir, filedir,
                            os.path.join(outpath, leaf.identifier),
                            filters_include, filters_exclude)
         logger.info("Done!")
@@ -383,7 +473,7 @@ def create_patchset(ctx, layer, filters_include, filters_exclude):
 
     return patch_set
 
-def _patchset_internal(ctx, layer, patchdir, outpath, filters_include, filters_exclude):
+def _patchset_internal(ctx, layer, patchdir, scriptdir, filedir, outpath, filters_include, filters_exclude):
     '''Create a patchset for a given layer.'''
     if os.path.exists(outpath):
         exit_with_error("Outpath may not exist: " + outpath)
@@ -395,7 +485,7 @@ def _patchset_internal(ctx, layer, patchdir, outpath, filters_include, filters_e
     # fetch the patches and copy them to the outpath.
     # Rename patches in order and update the patch_set info
     logger.info("Collecting patches...")
-    patch_set = collect_patches(patchdir, patch_set, outpath)
+    patch_set = collect_patches(patchdir, patch_set, outpath, filedir, scriptdir)
 
     logger.info("Writing patch file...")
     with open(os.path.join(outpath, "patches.json"), "w", encoding="utf-8") as outfile:
@@ -407,7 +497,7 @@ def _patchset_internal(ctx, layer, patchdir, outpath, filters_include, filters_e
     create_run_patches(patch_set, outpath)
 
 
-def collect_patches(patchdir, patch_set, target_path):
+def collect_patches(patchdir, patch_set, target_path, file_dir, script_dir):
     """Collects the patch files, renames them in order
     and updates their information in the patch_set.
     Returns a (deep) copy of the patch_set with modified
@@ -423,20 +513,60 @@ def collect_patches(patchdir, patch_set, target_path):
     for patch in patch_set_copy.patches:
         if patch.is_baseline():
             continue
-        patch_path = os.path.dirname(patch.patch)
-        patch_filename = os.path.basename(patch.patch)
-        os.makedirs(os.path.join(target_path, patch.basePath), exist_ok=True)
-        new_filename = os.path.join(patch.basePath, str(
+        if patch.is_script():
+            collect_script(target_path, script_dir, patch)
+
+            continue
+        if patch.is_copy():
+            collect_files(target_path, file_dir, patch)
+
+            continue
+        #default: patch...
+        collect_patch(patchdir, target_path, current_index, patch)
+    return patch_set_copy
+
+def collect_patch(patchdir, target_path, current_index, patch):
+    patch_path = os.path.dirname(patch.patch)
+    patch_filename = os.path.basename(patch.patch)
+    os.makedirs(os.path.join(target_path, patch.basePath), exist_ok=True)
+    new_filename = os.path.join(patch.basePath, str(
             current_index).zfill(5) + "_" + patch_filename)
-        try:
-            shutil.copy(
+    try:
+        shutil.copy(
                 os.path.join(patchdir, patch_path, patch_filename),
                 os.path.join(target_path, new_filename))
-        except FileNotFoundError as error:
-            exit_with_error(error)
-        patch.patch = new_filename
-        current_index += 1
-    return patch_set_copy
+    except FileNotFoundError as error:
+        exit_with_error(error)
+    patch.patch = new_filename
+    current_index += 1
+
+def collect_files(target_path, file_dir, patch):
+    source_dir = os.path.join(file_dir, patch.copySourceDir)
+    target_dir = os.path.join(target_path, "files", patch.copySourceDir)
+            #scripts_dir = os.path.join(patchset_dir, "scripts")
+
+    for file_to_copy in glob.glob(patch.copyPattern, recursive=True, root_dir=source_dir):
+        if os.path.isfile(os.path.join(source_dir, file_to_copy)):
+            os.makedirs(os.path.join(target_dir, os.path.dirname(file_to_copy)), exist_ok=True)
+            logger.info("Copying file %s ...", file_to_copy)
+            shutil.copy(os.path.join(source_dir, file_to_copy), os.path.join(target_dir, file_to_copy))
+
+def collect_script(target_path, script_dir, patch):
+    source_dir = script_dir
+    target_dir = os.path.join(target_path, "scripts")
+    if os.path.isfile(os.path.join(source_dir, patch.script)):
+        os.makedirs(os.path.join(target_dir, os.path.dirname(patch.script)), exist_ok=True)
+        logger.info("Copying script %s ...", patch.script)
+        shutil.copy(os.path.join(source_dir, patch.script), os.path.join(target_dir, patch.script))
+    logger.info(patch)
+    for resource in patch.scriptResources:
+        logger.info(resource)
+        logger.info(glob.glob(resource, recursive=True, root_dir=source_dir))
+        for resource_to_copy in glob.glob(resource, recursive=True, root_dir=source_dir):
+            if os.path.isfile(os.path.join(source_dir, resource_to_copy)):
+                os.makedirs(os.path.join(target_dir, os.path.dirname(resource_to_copy)), exist_ok=True)
+                logger.info("Copying script resource %s ...", resource_to_copy)
+                shutil.copy(os.path.join(source_dir, resource_to_copy), os.path.join(target_dir, resource_to_copy))
 
 
 # we need this since we want $ in our resulting file...
