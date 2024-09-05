@@ -314,18 +314,9 @@ def add_scripted(work_dir, scripts_dir, script):
             check = True
         )
 
-        if result.stdout:
-            logger.info("Script %s ran and wrote this to stdout:", script.script)
-            logger.info(result.stdout)
-        else:
-            logger.info("Script %s ran and wrote nothing to stdout.", script.script)
-
-        if result.stderr:
-            logger.info("Script %s ran and wrote this to stderr:", script.script)
-            logger.info(result.stderr)
-        else:
-            logger.info("Script %s ran and wrote nothing to stderr.", script.script)
+        print_script_results(script, result.stdout, result.stderr)
     except subprocess.CalledProcessError as error:
+        print_script_results(script, error.stdout, error.stderr)
         logger.error(str(error))
         exit_with_error("Script " + script.script + " returned " + str(error.returncode) + " when running. Exiting!")
 
@@ -335,6 +326,19 @@ def add_scripted(work_dir, scripts_dir, script):
 
     # now, we add commits to all of the repos...
     baseline.add_recursive_commit(work_dir, "Added result of running script " + script.script)
+
+def print_script_results(script, stdout, stderr):
+    if stdout:
+        logger.info("Script %s ran and wrote this to stdout:", script.script)
+        logger.info(stdout)
+    else:
+        logger.info("Script %s ran and wrote nothing to stdout.", script.script)
+
+    if stderr:
+        logger.info("Script %s ran and wrote this to stderr:", script.script)
+        logger.info(stderr)
+    else:
+        logger.info("Script %s ran and wrote nothing to stderr.", script.script)
 
 
 def add_files(work_dir, files_dir, files):
