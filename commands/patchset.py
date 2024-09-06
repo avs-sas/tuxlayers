@@ -306,8 +306,11 @@ def add_scripted(work_dir, scripts_dir, script):
         exit_with_error("scripts folder missing in patchset!")
     # now we just run the script in the base folder
     try:
+        command_with_args = [os.path.join(scripts_dir, script.script)]
+        command_with_args.extend(script.scriptArgs)
+        logger.info("Now running \"%s\"!", " ".join(command_with_args))
         result = subprocess.run(
-            [os.path.join(scripts_dir, script.script)],
+            " ".join(command_with_args),
             capture_output = True,
             text = True,
             shell = True,

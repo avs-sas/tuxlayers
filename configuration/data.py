@@ -33,6 +33,8 @@ class PatchConfig():
     # Same here but /w script command. Scripts are expected to be located in the scripts subdir of config
     # and are assumed to run in basePath.
     script: str = ""
+    # This list may contain any number of arguments passed to the script when executing it.
+    scriptArgs: list[str] = field(default_factory=list)
     # This may contain a list of files and/or glob wildcards (like resource/**/*) that gets copied with
     # the script file itself.
     scriptResources: list[str] = field(default_factory=list)
