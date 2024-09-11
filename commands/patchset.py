@@ -328,7 +328,10 @@ def add_scripted(work_dir, scripts_dir, script):
     os.chdir(previous_work_dir)
 
     # now, we add commits to all of the repos...
-    baseline.add_recursive_commit(work_dir, "Added result of running script " + script.script)
+    baseline.add_recursive_commit(
+        work_dir,
+        "Added result of running script " + script.script,
+        True) # also add newly created files
 
 def print_script_results(script, stdout, stderr):
     if stdout:
@@ -360,7 +363,8 @@ def add_files(work_dir, files_dir, files):
     # now, we add commits to all of the repos...
     baseline.add_recursive_commit(
         work_dir,
-        "Added result copy command from folder " + files.copySourceDir + " with pattern " + files.copyPattern
+        "Added result copy command from folder " + files.copySourceDir + " with pattern " + files.copyPattern,
+        True # also add newly created files
     )
 
 def add_baseline(work_dir, patch):
