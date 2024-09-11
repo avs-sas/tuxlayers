@@ -39,6 +39,9 @@ class PatchConfig():
     # the script file itself.
     scriptResources: list[str] = field(default_factory=list)
 
+    # For script and copy tasks this comment can be used to clarify what is being done.
+    # This gets put into git commits and can also be used in documentation tasks.
+    comment: str = ""
     def valid(self) -> bool:
         '''True if baseline xor patch xor script xor copy'''
         return self.is_baseline() ^ self.is_patch() ^ self.is_script() ^ self.is_copy()
