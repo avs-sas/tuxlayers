@@ -10,6 +10,7 @@ __status__ = "Development"
 import glob
 import logging
 import os
+import copy
 
 import click
 import coloredlogs
@@ -80,7 +81,7 @@ def parse_tree_from_layers(ctx):
         logger.info("Loading layer configuration from: %s", layer_file)
         layer_config = load_layer_config(layers_dir, layer_file)
         layer_id = layer_config.id
-        if len(layer_config.parent) == 0:
+        if not layer_config.have_parent():
             if base_layer is not None:
                 exit_with_error(
                     '''Found duplicate base layer
@@ -107,6 +108,13 @@ def parse_tree_from_layers(ctx):
                 if layer.parent == leaf.data.id:
                     layer_tree.create_node(layer.id, layer.id,
                                            parent=leaf.data.id, data=layer)
+                    new_leaves = True
+                elif leaf.data.id in layer.parents:
+                    # found an entry in parents...
+                    pos = layer.parents.index(leaf.data.id)
+                    new_layer = copy.deepcopy(layer)
+                    new_layer.id = layer.get_id_from_index(pos)
+                    layer_tree.create_node(new_layer.id, new_layer.id, parent=leaf.data.id, data=new_layer)
                     new_leaves = True
     return layer_tree
 

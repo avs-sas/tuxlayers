@@ -82,12 +82,38 @@ class PatchLayer():
     Used by BoardConfiguration."""
 
     id: str = ""
+    tree_ids: list[str] = field(default_factory=list)
     parent: str = ""
+    parents: list[str] = field(default_factory=list)
     title: str = ""
     description: str = "" # Used for longer documentation entries. Optional field.
     patches: list[PatchConfig] = field(default_factory=list)
 
+    def tree_ids_valid(self) -> bool:
+        ''' List of tree ids needs either to be empty or the same length as parents. Also no empty strings allowed.'''
+        if len(self.parents) > 0:
+            if len(self.tree_ids) == len(self.parents):
+                for i in self.tree_ids:
+                    if len(i) == 0:
+                        return False
+                return True
+        return len(self.tree_ids) == 0
+    def have_parent(self) -> bool:
+        ''' We need either a single parent (in parent) or multiple ones (via list...)'''
+        return len(self.parents) > 0 or len(self.parent) > 0
 
+    def is_multi_parent(self) -> bool:
+        ''' True if list parents are used and parent is emtpy.'''
+        return len(self.parents) > 0 and len(self.parent) == 0
+
+    def get_id_from_index(self, index) -> str:
+        ''' returns either the corresponding entry in tree_ids or auto-generates one by appending the index to id.'''
+        if self.tree_ids_valid():
+            if len(self.tree_ids) > 0:
+                return self.tree_ids[index]
+            else:
+                return self.id + "_" + str(index+1)
+        return ""
 @dataclass
 class PatchInfo():
     '''Collects information about a patch file'''
