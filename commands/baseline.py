@@ -483,7 +483,7 @@ def add_recursive_commit(path, commit_msg, add_newly_created_too=False):
     '''Adds a given empty commit to a repository and all its submodules'''
     repo = Repo(os.path.abspath(path))
     for module in repo.submodules:
-        add_recursive_commit(module.module().working_tree_dir, commit_msg)
+        add_recursive_commit(module.module().working_tree_dir, commit_msg, add_newly_created_too)
     if add_newly_created_too:
         repo.git.add('-A')
         repo.git.commit('--allow-empty', '-m', commit_msg)
