@@ -134,7 +134,7 @@ class LayerInfo():
 class Documentation():
     """ Contains all entries that can be used in a documentation template"""
     timestamp: datetime.datetime = datetime.datetime.now()
-    primaryLayer: LayerInfo = LayerInfo("", "", ""),
+    primaryLayer: LayerInfo = LayerInfo("", "", "")
     patches: list[PatchInfo] = field(default_factory=list)
     layers: list[LayerInfo] = field(default_factory=list)
     misc: Dict[str, str] = field(default_factory = lambda: ({}))
