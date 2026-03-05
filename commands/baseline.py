@@ -13,6 +13,7 @@ import pprint
 
 import click
 import pydriller
+import git
 from git import Repo
 
 from configuration import data
@@ -413,25 +414,18 @@ def baselines_are_valid(baselines):
     # simple but inefficient: we compare the keys of the first entry
     # to the rest of them
     # also len() needs to be the same
-    if not len(baselines) == 0:
+    if len(baselines) == 0:
         # by definition: no baselines is valid
         return True
     logger.info("checking baselines")
-    if not baselines.keys():
-        return True
-    logger.info(baselines)
-    first_repo = list(baselines.keys())[0]
-    first_baselines = baselines[first_repo]
-    first_length = len(first_baselines)
+    
+    first_repo_baselines = list(baselines.values())[0]
+    first_length = len(first_repo_baselines)
+    
     for repo, baseline in baselines.items():
-        if repo is first_repo:
-            continue
-
         if len(baseline) != first_length:
-            logger.warning("Baseline mismatch found!")
+            logger.warning("Baseline mismatch found for repo %s!", repo)
             logger.warning(pprint.pformat(baseline, indent=2))
-            logger.warning("Compared to:")
-            logger.warning(pprint.pformat(first_baselines, indent=2))
             return False
     return True
 

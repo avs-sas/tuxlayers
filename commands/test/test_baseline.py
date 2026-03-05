@@ -11,9 +11,66 @@ from commands.baseline import (
     create_baseline_string,
     is_baseline,
     get_message_parts,
+    is_baseline_patch,
+    baselines_are_valid,
     addbaseline,
-    showbaselines
+    showbaselines,
+    clean_workdir,
+    reverttobaseline
 )
+from unittest.mock import MagicMock, patch
+
+def test_is_baseline_patch():
+    # Correct baseline patch filename: <prefix> in name and ends with .patch
+    prefix = get_baseline_prefix()
+    assert is_baseline_patch(f"0001_some_patch_{prefix}.patch") is True
+    # Does not end with .patch
+    assert is_baseline_patch(f"0001_some_patch_{prefix}.txt") is False
+    # Does not contain prefix
+    assert is_baseline_patch("0001_some_patch.patch") is False
+    # Starts with prefix (should be False according to current implementation)
+    assert is_baseline_patch(f"{prefix}_0001_some_patch.patch") is False
+
+def test_baselines_are_valid():
+    # Empty baselines is valid
+    assert baselines_are_valid({}) is True
+    
+    # Matching length
+    baselines = {
+        "repo1": ["b1", "b2"],
+        "repo2": ["b1", "b2"]
+    }
+    assert baselines_are_valid(baselines) is True
+    
+    # Mismatch length
+    baselines_mismatch = {
+        "repo1": ["b1", "b2"],
+        "repo2": ["b1"]
+    }
+    assert baselines_are_valid(baselines_mismatch) is False
+
+def test_clean_workdir():
+    with patch("commands.baseline.Repo") as mock_repo_class:
+        mock_repo = mock_repo_class.return_value
+        clean_workdir("/some/path")
+        mock_repo.git.clean.assert_called_with(['-xfd'])
+        mock_repo.git.submodule.assert_called()
+
+def test_reverttobaseline_no_baseline_all_flag(caplog):
+    caplog.set_level(logging.INFO)
+    runner = CliRunner()
+    with patch("commands.baseline.get_baselines_from_path", return_value=({}, [])):
+        result = runner.invoke(reverttobaseline, ["--workdir", ".", "--all"])
+        assert any("Repository contains no baselines" in record.message for record in caplog.records)
+        assert result.exit_code == 0 # exit_application(0)
+
+def test_reverttobaseline_missing_args(caplog):
+    caplog.set_level(logging.ERROR)
+    runner = CliRunner()
+    with patch("commands.baseline.get_baselines_from_path", return_value=({"b1": []}, ["b1"])):
+        result = runner.invoke(reverttobaseline, ["--workdir", "."])
+        assert "Either specify all or provide a baseline name" in caplog.text
+        assert result.exit_code != 0
 
 def test_normalize_workdir_path():
     assert normalize_workdir_path("/path/to/workdir/") == "/path/to/workdir"
