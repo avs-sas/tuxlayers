@@ -14,7 +14,7 @@ import copy
 
 import click
 import coloredlogs
-import treelib
+import graphlib
 
 from commands import baseline, info, patchset
 from configuration.data import PatchLayer
@@ -50,16 +50,16 @@ def cli(ctx, log_level, layersdir):
     ctx.ensure_object(dict)
     if layersdir:
         ctx.obj['LAYER_SOURCE'] = layersdir
-        ctx.obj['LAYER_TREE'] = parse_tree_from_layers(ctx)
+        ctx.obj['LAYER_DAG'] = parse_graph_from_layers(ctx)
 
-        leaves = ctx.obj['LAYER_TREE'].leaves()
+        leaves = ctx.obj['LAYER_DAG'].leaves()
 
         ctx.obj['LEAVES'] = leaves
     else:
         logger.info("No layers selected. Continuing without them.")
 
 
-def parse_tree_from_layers(ctx):
+def parse_graph_from_layers(ctx):
     '''load all json files found in the config
     folder that contain a valid layer config'''
 
@@ -93,10 +93,36 @@ def parse_tree_from_layers(ctx):
                     "Found duplicate in layer configuration: " + layer_file)
             layers[layer_id] = layer_config
 
-    layer_tree = treelib.Tree()
+    graph_seed = dict[PatchLayer, list[PatchLayer]]
+    for layer in layers.values():
+        if layer.have_parents():
+            for parent in layer.parents:
+                if parent in graph_seed:
+                    graph_seed[parent] = graph_seed[parent].append[layer]
+                else:
+                    graph_seed[parent] = [layer]
+            if layer.parent in graph_seed:
+                graph_seed[parent] = graph_seed[parent].append(layer)
+            else:
+                graph_seed[parent] = [layer]
+        else:
+            # handle entry point...
+            if layer in graph_seed:
+                exit_with_error(
+                    "Found duplicate seed layer: " + layer.id)
+            graph_seed[layer] = []
+
+    graph = dict[PatchLayer, set[PatchLayer]]
+    for seed in graph_seed.keys():
+        if seed not in graph:
+            graph[seed] = set()
+        for child in graph_seed[seed]:
+            graph[seed].add()
     if base_layer is None:
-        return layer_tree
-    layer_tree.create_node(base_layer.id, base_layer.id, data=base_layer)
+        return graph
+    graph[base_layer] = set()
+
+
     new_leaves = True
     while new_leaves:
         new_leaves = False
