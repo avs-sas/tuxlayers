@@ -81,86 +81,6 @@ def patchset(ctx, layer, patchdir, scriptdir, filedir, outpath, all_patchsets, f
         else:
             exit_with_error("You need to specify either a layer using -l or -a for all layers.")
 
-def _create_doc_data(ctx, layer, patchdir, misc):
-    """Helper to prepare documentation data."""
-    doc_data = data.Documentation()
-    patch_set = create_patchset(ctx, layer, "", "")
-    for patch in patch_set.patches:
-        if not patch.is_patch():
-            continue
-        patchfile = os.path.join(patchdir, patch.patch)
-        logger.info("Comments for file %s", patchfile)
-        patch_info = data.PatchInfo()
-        patch_info.patchfile = patchfile
-        patch_info.patchfile_basename = os.path.basename(patchfile)
-        comment = extract_patch_commente(patchfile)
-        if comment:
-            patch_info.comments = comment
-            patch_info.joined_comment = str("\n").join(patch_info.comments)
-        doc_data.patches.append(patch_info)
-
-    for entry in misc:
-        doc_data.misc[entry[0]] = entry[1]
-        logger.info("Misc. key found: %s: %s", entry[0], entry[1])
-
-    for referred_layer in get_all_referred_layers(layer, ctx.obj['LAYER_TREE']):
-        doc_data.layers.append(
-            data.LayerInfo(
-                id=referred_layer.id,
-                title=referred_layer.title,
-                description=referred_layer.description)
-        )
-    doc_data.primaryLayer = layer
-    now = datetime.datetime.utcnow()
-    doc_data.timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
-    return doc_data
-
-def _get_timestamped_filename(timestamp_str, templatefile):
-    """Generates a timestamped filename for documentation."""
-    now = datetime.datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
-    if templatefile:
-        result_filename = now.strftime("%Y%m%d-%H%M%S") + os.path.basename(templatefile)
-        return result_filename.rstrip(".jinja2")
-    return now.strftime("%Y%m%d-%H%M%S_default.md")
-
-def _get_default_template():
-    """Returns the default Jinja2 template for documentation."""
-    return '''# Documentation for layer {{ data.primaryLayer }}
-
-Created on {{data.timestamp}}
-
-# Handled layers:
-
-{% for layer in data.layers -%}
-  {{layer.id}}: {{layer.title}}
-{% endfor %}
-
-# Release Overview:
-
-{% for layer in data.layers -%}
-  {{layer.description}}
-{% endfor %}
-
-# Patches
-
-A patchset creating the following patches was created from the layer definitions:
-
-{% for patch in data.patches %}
-## Patch: {{patch.patchfile_basename}}
-{% if patch.comments -%}
-{% for commentLine in patch.comments -%}
-{{commentLine}}
-{% endfor %}
-{% else -%}
-*No comment found*
-{% endif -%}
-{% endfor %}
-
-
-# THIS IS THE DEFAULT TEMPLATE; PLEASE PROVIDE A CORRECT TEMPLATE FILE INSTEAD
-
-'''
-
 @click.command()
 @click.option(
     '--layer', '-l', required=True,
@@ -207,20 +127,90 @@ def document(ctx, layer, patchdir, templatefile, misc, outpath):
         exit_with_error("Outpath must exist: " + outpath)
 
     logger.info("Creating documentation for layer %s, writing to %s", layer, outpath)
-    doc_data = _create_doc_data(ctx, layer, patchdir, misc)
+    doc_data = data.Documentation()
+    patch_set = create_patchset(ctx, layer, "", "")
+    for patch in patch_set.patches:
+        if not patch.is_patch():
+            continue
+        patchfile = os.path.join(patchdir, patch.patch)
+        logger.info("Comments for file %s", patchfile)
+        patch_info = data.PatchInfo()
+        patch_info.patchfile = patchfile
+        patch_info.patchfile_basename = os.path.basename(patchfile)
+        comment = extract_patch_commente(patchfile)
+        if comment:
+            patch_info.comments = comment
+            patch_info.joined_comment = str("\n").join(patch_info.comments)
+        doc_data.patches.append(patch_info)
 
+
+    for entry in misc:
+        doc_data.misc[entry[0]] = entry[1]
+        logger.info("Misc. key found: %s: %s", entry[0], entry[1])
+    logger.info(doc_data.misc)
     if templatefile:
         if not os.path.isfile(templatefile):
             exit_with_error("Template file not found: " + templatefile)
         with open(templatefile, "r", encoding="utf-8") as jinja_template:
             template = jinja_template.read()
     else:
-        template = _get_default_template()
+        template = '''# Documentation for layer {{ data.primaryLayer }}
+
+Created on {{data.timestamp}}
+
+# Handled layers:
+
+{% for layer in data.layers -%}
+  {{layer.id}}: {{layer.title}}
+{% endfor %}
+
+# Release Overview:
+
+{% for layer in data.layers -%}
+  {{layer.description}}
+{% endfor %}
+
+# Patches
+
+A patchset creating the following patches was created from the layer definitions:
+
+{% for patch in data.patches %}
+## Patch: {{patch.patchfile_basename}}
+{% if patch.comments -%}
+{% for commentLine in patch.comments -%}
+{{commentLine}}
+{% endfor %}
+{% else -%}
+*No comment found*
+{% endif -%}
+{% endfor %}
+
+
+# THIS IS THE DEFAULT TEMPLATE; PLEASE PROVIDE A CORRECT TEMPLATE FILE INSTEAD
+
+'''
+
+    for referred_layer in get_all_referred_layers(layer, ctx.obj['LAYER_TREE']):
+        doc_data.layers.append(
+            data.LayerInfo(
+                id=referred_layer.id,
+                title = referred_layer.title,
+                description=referred_layer.description)
+            )
+    doc_data.primaryLayer = layer
+    now = datetime.datetime.utcnow()
+    doc_data.timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
 
     #logger.info(template)
     tpl = jinja2.Template(template)
     result = tpl.render(data=doc_data).replace('_', r'\_')
-    result_filename = _get_timestamped_filename(doc_data.timestamp, templatefile)
+    if templatefile:
+        result_filename = now.strftime(
+            "%Y%m%d-%H%M%S"
+        ) + os.path.basename(templatefile)
+        result_filename = result_filename.rstrip(".jinja2")
+    else:
+        result_filename = now.strftime("%Y%m%d-%H%M%S_default.md")
     logger.info("Writing documenatation to %s in %s", result_filename, outpath)
     with open(os.path.join(outpath, result_filename), 'w', encoding="utf-8") as outfile:
         outfile.write(result)
@@ -308,12 +298,6 @@ def apply(patch_set, workdir, addbaselines, fromlayer, fixwhitespace):
 
         os.chdir(previous_work_dir)
 
-def _get_commit_message(base_msg, comment):
-    """Generates a commit message with optional comment."""
-    if comment:
-        return f"{base_msg} Comment: {comment}"
-    return base_msg
-
 def add_scripted(work_dir, scripts_dir, script):
     """ Executes a configured script task. """
     logger.info("Found script task in patch config.")
@@ -344,7 +328,10 @@ def add_scripted(work_dir, scripts_dir, script):
     os.chdir(previous_work_dir)
 
     # now, we add commits to all of the repos...
-    commitMessage = _get_commit_message(f"Added result of running script {script.script}", script.comment)
+    commitMessage = "Added result of running script " + script.script
+    if script.comment:
+        commitMessage += "Comment: "
+        commitMessage += script.comment
     baseline.add_recursive_commit(
         work_dir,
         commitMessage,
@@ -378,7 +365,10 @@ def add_files(work_dir, files_dir, files):
             shutil.copy(os.path.join(source_dir, file_to_copy), os.path.join(".", file_to_copy))
 
     # now, we add commits to all of the repos...
-    commitMessage = _get_commit_message(f"Added result copy command from folder {files.copySourceDir} with pattern {files.copyPattern}", files.comment)
+    commitMessage = "Added result copy command from folder " + files.copySourceDir + " with pattern " + files.copyPattern
+    if files.comment:
+        commitMessage += "Comment: "
+        commitMessage += files.comment
     baseline.add_recursive_commit(
         work_dir,
         commitMessage,
@@ -389,33 +379,30 @@ def add_baseline(work_dir, patch):
     logger.info("Found baseline in patch config.")
     baseline.add_baseline_internal(work_dir, patch.baseline)
 
-def _apply_patch_with_fix(repo, patch_file, patch_name):
-    """Retries applying a patch with whitespace ignore flags if initial apply fails."""
-    try:
-        repo.git.apply(['-3', patch_file])
-    except git.exc.GitError:
-        logger.info("Retrying to apply patch %s with ignored whitespace.", patch_file)
-        repo.git.restore(['--staged', '--', '.'])
-        repo.git.restore(['--', '.'])
-        repo.git.apply(['--ignore-space-change', '--ignore-whitespace', '-3', patch_file])
-
-    try:
-        repo.git.commit(['-m', "Applied patch " + patch_name])
-    except git.exc.GitError:
-        logger.info("Retrying to commit patch %s with allowing empty commits. This might be a result when ignoring whitespace before.", patch_name)
-        repo.git.commit(['-m', '--allow-empty', "Applied patch " + patch_name])
-
 def add_patches(fixwhitespace, patchset_dir, previous_work_dir, patch):
     try:
         repo = git.Repo(".")
         patch_file = os.path.join(os.path.abspath(patchset_dir), patch.patch)
         logger.info("Running patch %s!", patch.patch)
-
         if not fixwhitespace:
             repo.git.apply(['-3', patch_file])
             repo.git.commit(['-m', "Applied patch " + patch.patch])
         else:
-            _apply_patch_with_fix(repo, patch_file, patch.patch)
+                    # If we have the "fix whitespace" argument, we do the following:
+                    # First: try it "normally" as above. If this does not help we restore and retry /w ignore whitespace.
+                    # Only if this breaks we raise an exception on the outside and exit with a corresponding error...
+            try:
+                repo.git.apply(['-3', patch_file])
+            except git.exc.GitError:
+                logger.info("Retrying to apply patch %s with ignored whitespace.", patch_file)
+                repo.git.restore(['--staged', '--', '.'])
+                repo.git.restore(['--', '.'])
+                repo.git.apply(['--ignore-space-change', '--ignore-whitespace', '-3', patch_file])
+            try:
+                repo.git.commit(['-m', "Applied patch " + patch.patch])
+            except git.exc.GitError:
+                logger.info("Retrying to commit patch %s with allowing empty commits. This might be a result when ignoring whitespace before.", patch_file)
+                repo.git.commit(['-m', '--allow-empty',  "Applied patch " + patch.patch])
 
     except git.exc.GitError as error:
         os.chdir(previous_work_dir)
@@ -453,33 +440,6 @@ def create_all_sets(ctx, patchdir, scriptdir, filedir, outpath, filters_include,
     logger.info("Created %d full patchsets", len(tree.leaves()))
 
 
-def _should_include_patch(patch, filters_include, filters_exclude):
-    """Helper to determine if a patch should be included based on filters."""
-    if len(filters_exclude) == 0 and len(filters_include) == 0:
-        return True
-
-    tags = []
-    if patch.tags is not None:
-        tags = [i.strip() for i in patch.tags.split(',')]
-
-    exclude = False
-    include = True
-
-    if len(filters_include) > 0:
-        include = False
-        for include_filter in filters_include:
-            if include_filter in tags:
-                include = True
-                break
-
-    if len(filters_exclude) > 0:
-        for exclude_filter in filters_exclude:
-            if exclude_filter in tags:
-                exclude = True
-                break
-
-    return not exclude and include
-
 def create_patchset(ctx, layer, filters_include, filters_exclude):
     '''Creates a patchset for the selected layer'''
     tree = ctx.obj['LAYER_TREE']
@@ -491,18 +451,41 @@ def create_patchset(ctx, layer, filters_include, filters_exclude):
 
     current_layer = ''
     for referred_layer in layers:
-        if referred_layer.id != current_layer:
+        if referred_layer.id is not current_layer:
             baseline_patch_entry = data.PatchConfig(
                 basePath="",
                 patch="",
                 baseline=referred_layer.id)
             patch_set.patches.append(baseline_patch_entry)
             current_layer = referred_layer.id
-
-        for patch in referred_layer.patches:
-            if _should_include_patch(patch, filters_include, filters_exclude):
-                logger.info("Including patch %s!", patch)
-                patch_set.patches.append(patch)
+        # if no filter is defined: just add all patches:
+        #logger.info(referred_layer.patches)
+        if len(filters_exclude) == 0 and len(filters_include) == 0:
+            patch_set.patches.extend(referred_layer.patches)
+        else:
+            # else: we check every patch it if fits the include/exclude pattern
+            # first: include, then: exclude
+            for patch in referred_layer.patches:
+                tags = []
+                if patch.tags is not None:
+                    tags = [i.strip() for i in patch.tags.split(',')]
+                exclude = False
+                include = True
+                # check for include/exclude filter before appending:
+                if len(filters_include) > 0:
+                    include = False
+                    if not include:
+                        for include_filter in filters_include:
+                            if include_filter in tags:
+                                include = True
+                if len(filters_exclude) > 0:
+                    for exclude_filter in filters_exclude:
+                        if exclude_filter in tags:
+                            exclude = True
+                if not exclude and include:
+                    logger.info("Including patch %s!", patch)
+                    #ok, we append the patch!
+                    patch_set.patches.append(patch)
 
     logger.info("Created patchset containing %d patches",
                 len(patch_set.patches))
