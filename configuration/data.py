@@ -23,11 +23,11 @@ class PatchConfig():
     # There might be a more "python" way to do this though...
     baseline: str = ""
     # If this is set and patch is empty, handle this as a "copy" command instead of
-    # a patch command. Again: this feels wrong but I found no other way in dataclass_json to make 
+    # a patch command. Again: this feels wrong but I found no other way in dataclass_json to make
     # this work nicely (e.g. /w multiple encapsulated "command-style" types instead of this)
     copyPattern: str = ""
-    # Files are assumed to be located in the files subdir of config. If copySourceDir is set this is 
-    # assumed to be a subdir of config/files. You can use wildcards that glob() understands. 
+    # Files are assumed to be located in the files subdir of config. If copySourceDir is set this is
+    # assumed to be a subdir of config/files. You can use wildcards that glob() understands.
     # Files will be copied to a folder relative to basePath.
     copySourceDir: str = ""
     # Same here but /w script command. Scripts are expected to be located in the scripts subdir of config

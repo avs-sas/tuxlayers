@@ -12,7 +12,7 @@ def mock_ctx_obj():
     layer2 = PatchLayer(id="child", parent="base", title="Child Layer")
     tree.create_node(layer1.id, layer1.id, data=layer1)
     tree.create_node(layer2.id, layer2.id, parent=layer1.id, data=layer2)
-    
+
     return {
         'LEAVES': tree.leaves(),
         'LAYER_SOURCE': '/mock/path',

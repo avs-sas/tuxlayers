@@ -418,10 +418,10 @@ def baselines_are_valid(baselines):
         # by definition: no baselines is valid
         return True
     logger.info("checking baselines")
-    
+
     first_repo_baselines = list(baselines.values())[0]
     first_length = len(first_repo_baselines)
-    
+
     for repo, baseline in baselines.items():
         if len(baseline) != first_length:
             logger.warning("Baseline mismatch found for repo %s!", repo)

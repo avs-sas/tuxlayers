@@ -45,15 +45,15 @@ def test_add_scripted(tmp_path):
     scripts_dir = tmp_path / "scripts"
     scripts_dir.mkdir()
     (scripts_dir / "test.sh").write_text("echo test")
-    
+
     patch_config = PatchConfig(basePath=".", patch="", script="test.sh", scriptArgs=["arg1"])
-    
+
     with patch("subprocess.run") as mock_run, \
          patch("commands.baseline.add_recursive_commit") as mock_commit:
         mock_run.return_value = MagicMock(stdout="out", stderr="err", returncode=0)
-        
+
         add_scripted(str(tmp_path), str(scripts_dir), patch_config)
-        
+
         mock_run.assert_called_once()
         assert "test.sh arg1" in mock_run.call_args[0][0]
         mock_commit.assert_called_once()
@@ -63,19 +63,19 @@ def test_add_files(tmp_path):
     files_dir.mkdir()
     (files_dir / "source").mkdir()
     (files_dir / "source" / "data.txt").write_text("data")
-    
+
     work_dir = tmp_path / "work"
     work_dir.mkdir()
-    
+
     patch_config = PatchConfig(basePath=".", patch="", copyPattern="data.txt", copySourceDir="source")
-    
+
     # We need to use real os.chdir to affect relative path operations in add_files
     original_cwd = os.getcwd()
     try:
         os.chdir(str(work_dir))
         with patch("commands.baseline.add_recursive_commit") as mock_commit:
             add_files(str(work_dir), str(files_dir), patch_config)
-            
+
             assert os.path.exists("data.txt")
             mock_commit.assert_called_once()
     finally:
@@ -85,27 +85,27 @@ def test_add_patches(tmp_path):
     patchset_dir = tmp_path / "patchset"
     patchset_dir.mkdir()
     (patchset_dir / "test.patch").write_text("patch content")
-    
+
     patch_config = PatchConfig(basePath=".", patch="test.patch")
-    
+
     with patch("git.Repo") as mock_repo_class:
         mock_repo = mock_repo_class.return_value
         add_patches(False, str(patchset_dir), str(tmp_path), patch_config)
-        
+
         mock_repo.git.apply.assert_called_with(['-3', os.path.abspath(os.path.join(str(patchset_dir), "test.patch"))])
         mock_repo.git.commit.assert_called()
 
 def test_extract_patch_commente(tmp_path):
     patch_file = tmp_path / "test.patch"
     patch_file.write_text("# This is a comment\n# Another line\n---\nPatch content starts here")
-    
+
     comments = extract_patch_commente(str(patch_file))
     assert comments == ["This is a comment", "Another line"]
 
 def test_extract_patch_commente_no_comments(tmp_path):
     patch_file = tmp_path / "test.patch"
     patch_file.write_text("---\nPatch content starts here")
-    
+
     comments = extract_patch_commente(str(patch_file))
     assert comments == []
 
@@ -114,11 +114,11 @@ def test_get_all_referred_layers():
     layer1 = PatchLayer(id="root", title="Root Layer")
     layer2 = PatchLayer(id="mid", parent="root", title="Mid Layer")
     layer3 = PatchLayer(id="leaf", parent="mid", title="Leaf Layer")
-    
+
     tree.create_node(layer1.id, layer1.id, data=layer1)
     tree.create_node(layer2.id, layer2.id, parent=layer1.id, data=layer2)
     tree.create_node(layer3.id, layer3.id, parent=layer2.id, data=layer3)
-    
+
     layers = list(get_all_referred_layers("leaf", tree))
     assert len(layers) == 3
     assert layers[0].id == "root"
@@ -134,18 +134,18 @@ def test_create_patchset():
     tree = treelib.Tree()
     p1 = PatchConfig(basePath=".", patch="p1.patch")
     p2 = PatchConfig(basePath=".", patch="p2.patch")
-    
+
     layer1 = PatchLayer(id="root", title="Root", patches=[p1])
     layer2 = PatchLayer(id="leaf", parent="root", title="Leaf", patches=[p2])
-    
+
     tree.create_node(layer1.id, layer1.id, data=layer1)
     tree.create_node(layer2.id, layer2.id, parent=layer1.id, data=layer2)
-    
+
     ctx = MagicMock()
     ctx.obj = {'LAYER_TREE': tree}
-    
+
     patchset = create_patchset(ctx, "leaf", [], [])
-    
+
     assert len(patchset.patches) == 4
     assert patchset.patches[0].baseline == "root"
     assert patchset.patches[1].patch == "p1.patch"
@@ -156,18 +156,18 @@ def test_create_patchset_with_filters():
     tree = treelib.Tree()
     p1 = PatchConfig(basePath=".", patch="p1.patch", tags="tag1")
     p2 = PatchConfig(basePath=".", patch="p2.patch", tags="tag2")
-    
+
     layer1 = PatchLayer(id="root", title="Root", patches=[p1, p2])
     tree.create_node(layer1.id, layer1.id, data=layer1)
-    
+
     ctx = MagicMock()
     ctx.obj = {'LAYER_TREE': tree}
-    
+
     # Include only tag1
     patchset = create_patchset(ctx, "root", ["tag1"], [])
     assert len(patchset.patches) == 2
     assert patchset.patches[1].patch == "p1.patch"
-    
+
     # Exclude tag1
     patchset = create_patchset(ctx, "root", [], ["tag1"])
     assert len(patchset.patches) == 2
@@ -177,7 +177,7 @@ def test_load_patches(tmp_path):
     ps = PatchSet(patches=[PatchConfig(basePath=".", patch="test.patch")])
     ps_file = tmp_path / "patches.json"
     ps_file.write_text(ps.to_json())
-    
+
     loaded = load_patches(str(tmp_path))
     assert len(loaded.patches) == 1
     assert loaded.patches[0].patch == "test.patch"
@@ -190,13 +190,13 @@ def test_collect_patch(tmp_path):
     patchdir = tmp_path / "patches"
     patchdir.mkdir()
     (patchdir / "test.patch").write_text("patch content")
-    
+
     target_path = tmp_path / "target"
     target_path.mkdir()
-    
+
     patch = PatchConfig(basePath="subdir", patch="test.patch")
     collect_patch(str(patchdir), str(target_path), 1, patch)
-    
+
     assert patch.patch == os.path.join("subdir", "00001_test.patch")
     assert os.path.exists(target_path / "subdir" / "00001_test.patch")
 
@@ -205,13 +205,13 @@ def test_collect_files(tmp_path):
     file_dir.mkdir()
     (file_dir / "src").mkdir()
     (file_dir / "src" / "file.txt").write_text("content")
-    
+
     target_path = tmp_path / "target"
     target_path.mkdir()
-    
+
     patch = PatchConfig(basePath=".", patch="", copyPattern="**/*", copySourceDir="src")
     collect_files(str(target_path), str(file_dir), patch)
-    
+
     assert os.path.exists(target_path / "files" / "src" / "file.txt")
 
 def test_collect_script(tmp_path):
@@ -219,13 +219,13 @@ def test_collect_script(tmp_path):
     script_dir.mkdir()
     (script_dir / "script.sh").write_text("echo hello")
     (script_dir / "resource.txt").write_text("resource")
-    
+
     target_path = tmp_path / "target"
     target_path.mkdir()
-    
+
     patch = PatchConfig(basePath=".", patch="", script="script.sh", scriptResources=["resource.txt"])
     collect_script(str(target_path), str(script_dir), patch)
-    
+
     assert os.path.exists(target_path / "scripts" / "script.sh")
     assert os.path.exists(target_path / "scripts" / "resource.txt")
 
@@ -233,27 +233,27 @@ def test_collect_patches(tmp_path):
     patchdir = tmp_path / "patches"
     patchdir.mkdir()
     (patchdir / "p1.patch").write_text("p1")
-    
+
     scriptdir = tmp_path / "scripts"
     scriptdir.mkdir()
     (scriptdir / "s1.sh").write_text("s1")
-    
+
     filedir = tmp_path / "files"
     filedir.mkdir()
     (filedir / "f1.txt").write_text("f1")
-    
+
     target_path = tmp_path / "target"
     target_path.mkdir()
-    
+
     ps = PatchSet(patches=[
         PatchConfig(basePath="", patch="", baseline="b1"),
         PatchConfig(basePath="p", patch="p1.patch"),
         PatchConfig(basePath="s", patch="", script="s1.sh"),
         PatchConfig(basePath="f", patch="", copyPattern="f1.txt", copySourceDir="")
     ])
-    
+
     new_ps = collect_patches(str(patchdir), ps, str(target_path), str(filedir), str(scriptdir))
-    
+
     assert len(new_ps.patches) == 4
     assert new_ps.patches[1].patch.endswith("p1.patch")
     assert os.path.exists(target_path / "scripts" / "s1.sh")
@@ -264,7 +264,7 @@ def test_create_run_patches(tmp_path):
         PatchConfig(basePath="sub", patch="00001_p1.patch", updateModulesAfterPatch=True)
     ])
     create_run_patches(ps, str(tmp_path))
-    
+
     run_script = tmp_path / "runPatches.sh"
     assert run_script.exists()
     content = run_script.read_text()
@@ -343,7 +343,7 @@ def test_patchset_command_single_layer(tmp_path):
     tree = treelib.Tree()
     tree.create_node("root", "root", data=PatchLayer(id="root"))
     ctx_obj = {'LAYER_TREE': tree}
-    
+
     # We need real patchdir, scriptdir, filedir
     patchdir = tmp_path / "patches"
     patchdir.mkdir()
@@ -351,7 +351,7 @@ def test_patchset_command_single_layer(tmp_path):
     scriptdir.mkdir()
     filedir = tmp_path / "files"
     filedir.mkdir()
-    
+
     with patch("shared.helpers.layer_config_exists", return_value=True), \
          patch("shared.helpers.need_layer_config"):
         from commands.patchset import patchset
@@ -365,15 +365,15 @@ def test_document_command_with_patches(tmp_path):
     layer1 = PatchLayer(id="root", title="Root")
     tree.create_node(layer1.id, layer1.id, data=layer1)
     ctx_obj = {'LAYER_TREE': tree}
-    
+
     # Create a patch file with comments
     patchdir = tmp_path / "patches"
     patchdir.mkdir()
     p1_file = patchdir / "p1.patch"
     p1_file.write_text("# P1 Comment\n---\nContent")
-    
+
     ps = PatchSet(patches=[PatchConfig(basePath=".", patch="p1.patch")])
-    
+
     with patch("shared.helpers.layer_config_exists", return_value=True), \
          patch("commands.patchset.create_patchset", return_value=ps), \
          patch("commands.patchset.get_all_referred_layers", return_value=[layer1]):
@@ -397,16 +397,16 @@ def test_apply_command_with_baseline_and_script(tmp_path):
     patchset_dir.mkdir()
     (patchset_dir / "scripts").mkdir()
     (patchset_dir / "scripts" / "s1.sh").write_text("echo s1")
-    
+
     ps = PatchSet(patches=[
         PatchConfig(basePath=".", patch="", baseline="b1"),
         PatchConfig(basePath=".", patch="", script="s1.sh", comment="Script comment")
     ])
     (patchset_dir / "patches.json").write_text(ps.to_json())
-    
+
     workdir = tmp_path / "work"
     workdir.mkdir()
-    
+
     with patch("git.Repo"), \
          patch("commands.baseline.add_baseline_internal") as mock_add_baseline, \
          patch("subprocess.run") as mock_run, \
@@ -423,7 +423,7 @@ def test_apply_command_with_baseline_and_script(tmp_path):
 def test_collect_patches_invalid_paths(tmp_path):
     with pytest.raises(SystemExit):
         collect_patches(str(tmp_path / "nonexistent"), PatchSet(), str(tmp_path), "", "")
-    
+
     with pytest.raises(SystemExit):
         collect_patches(str(tmp_path), PatchSet(), str(tmp_path / "nonexistent"), "", "")
 
@@ -491,10 +491,10 @@ def test_document_command_with_template(tmp_path):
     layer1 = PatchLayer(id="root", title="Root")
     tree.create_node(layer1.id, layer1.id, data=layer1)
     ctx_obj = {'LAYER_TREE': tree}
-    
+
     template = tmp_path / "template.jinja2"
     template.write_text("Template content for {{ data.primaryLayer }}")
-    
+
     with patch("shared.helpers.layer_config_exists", return_value=True), \
          patch("commands.patchset.create_patchset", return_value=PatchSet(patches=[])), \
          patch("commands.patchset.get_all_referred_layers", return_value=[layer1]):
@@ -502,7 +502,7 @@ def test_document_command_with_template(tmp_path):
         outdir.mkdir()
         result = runner.invoke(document, ["-l", "root", "-t", str(template), str(outdir)], obj=ctx_obj)
         assert result.exit_code == 0
-        
+
         # Check if file with template name (sans .jinja2) was created
         files = list(outdir.glob("*template"))
         assert len(files) == 1
@@ -512,26 +512,26 @@ def test_create_patchset_complex_filtering():
     p1 = PatchConfig(basePath=".", patch="p1.patch", tags="tag1, tag2")
     p2 = PatchConfig(basePath=".", patch="p2.patch", tags="tag2, tag3")
     p3 = PatchConfig(basePath=".", patch="p3.patch", tags="tag4")
-    
+
     layer1 = PatchLayer(id="root", title="Root", patches=[p1, p2, p3])
     tree.create_node(layer1.id, layer1.id, data=layer1)
-    
+
     ctx = MagicMock()
     ctx.obj = {'LAYER_TREE': tree}
-    
+
     # Include tag1, exclude tag3 -> only p1
     ps = create_patchset(ctx, "root", ["tag1"], ["tag3"])
     # 2 entries (baseline + p1)
     assert len(ps.patches) == 2
     assert ps.patches[1].patch == "p1.patch"
-    
+
     # Include tag2, exclude tag1 -> only p2
     ps = create_patchset(ctx, "root", ["tag2"], ["tag1"])
     assert len(ps.patches) == 2
     assert ps.patches[1].patch == "p2.patch"
 def test_apply_command_basic(tmp_path):
     runner = CliRunner()
-    
+
     # Create a mock patchset directory
     patchset_dir = tmp_path / "patchset"
     patchset_dir.mkdir()
@@ -540,12 +540,12 @@ def test_apply_command_basic(tmp_path):
     ])
     (patchset_dir / "patches.json").write_text(ps.to_json())
     (patchset_dir / "00001_p1.patch").write_text("patch content")
-    
+
     # Create a mock workdir
     workdir = tmp_path / "work"
     workdir.mkdir()
     (workdir / "repo1").mkdir()
-    
+
     with patch("git.Repo") as mock_repo_class, \
          patch("shared.helpers.layer_config_exists", return_value=True):
         from commands.patchset import apply
@@ -565,16 +565,16 @@ def test_add_patches_with_fixwhitespace(tmp_path):
     patchset_dir.mkdir()
     patch_file = patchset_dir / "test.patch"
     patch_file.write_text("patch content")
-    
+
     patch_config = PatchConfig(basePath=".", patch="test.patch")
-    
+
     with patch("git.Repo") as mock_repo_class:
         mock_repo = mock_repo_class.return_value
         # Simulate GitError on first apply, but success on retry
         mock_repo.git.apply.side_effect = [git.exc.GitError("err"), None]
-        
+
         add_patches(True, str(patchset_dir), str(tmp_path), patch_config)
-        
+
         assert mock_repo.git.apply.call_count == 2
         mock_repo.git.restore.assert_called()
 
@@ -583,16 +583,16 @@ def test_add_patches_with_fixwhitespace_and_empty_commit(tmp_path):
     patchset_dir.mkdir()
     patch_file = patchset_dir / "test.patch"
     patch_file.write_text("patch content")
-    
+
     patch_config = PatchConfig(basePath=".", patch="test.patch")
-    
+
     with patch("git.Repo") as mock_repo_class:
         mock_repo = mock_repo_class.return_value
         # Simulate GitError on first commit, but success on retry with --allow-empty
         mock_repo.git.commit.side_effect = [git.exc.GitError("err"), None]
-        
+
         add_patches(True, str(patchset_dir), str(tmp_path), patch_config)
-        
+
         assert mock_repo.git.commit.call_count == 2
         # Check if --allow-empty was used in the second call
         args = mock_repo.git.commit.call_args_list[1][0][0]
@@ -602,12 +602,12 @@ def test_add_scripted_error(tmp_path, caplog):
     scripts_dir = tmp_path / "scripts"
     scripts_dir.mkdir()
     (scripts_dir / "fail.sh").write_text("exit 1")
-    
+
     patch_config = PatchConfig(basePath=".", patch="", script="fail.sh")
-    
+
     with patch("subprocess.run") as mock_run:
         mock_run.side_effect = subprocess.CalledProcessError(1, "fail.sh", stderr="error msg")
-        
+
         with pytest.raises(SystemExit):
             add_scripted(str(tmp_path), str(scripts_dir), patch_config)
         assert "Script fail.sh returned 1 when running" in caplog.text
@@ -617,45 +617,45 @@ def test_create_all_sets(tmp_path):
     layer1 = PatchLayer(id="root", title="Root")
     layer2 = PatchLayer(id="leaf1", parent="root", title="Leaf 1")
     layer3 = PatchLayer(id="leaf2", parent="root", title="Leaf 2")
-    
+
     tree.create_node(layer1.id, layer1.id, data=layer1)
     tree.create_node(layer2.id, layer2.id, parent=layer1.id, data=layer2)
     tree.create_node(layer3.id, layer3.id, parent=layer1.id, data=layer3)
-    
+
     ctx = MagicMock()
     ctx.obj = {'LAYER_TREE': tree}
-    
+
     outpath = tmp_path / "out"
     # Note: create_all_sets expects outpath to NOT exist
-    
+
     with patch("commands.patchset._patchset_internal") as mock_internal:
         from commands.patchset import create_all_sets
         create_all_sets(ctx, "patchdir", "scriptdir", "filedir", str(outpath), [], [])
-        
+
         assert mock_internal.call_count == 2
 
 def test_document_command_with_misc(tmp_path):
     runner = CliRunner()
-    
+
     tree = treelib.Tree()
     layer1 = PatchLayer(id="root", title="Root", description="Desc")
     tree.create_node(layer1.id, layer1.id, data=layer1)
-    
+
     ctx_obj = {'LAYER_TREE': tree}
-    
+
     with patch("shared.helpers.layer_config_exists", return_value=True), \
          patch("shared.helpers.need_layer_config"), \
          patch("commands.patchset.create_patchset", return_value=PatchSet(patches=[])), \
          patch("commands.patchset.get_all_referred_layers", return_value=[layer1]):
-        
+
         from commands.patchset import document
         # Need to provide outpath that exists
         outdir = tmp_path / "docs"
         outdir.mkdir()
-        
+
         result = runner.invoke(document, ["-l", "root", "-m", "mykey", "myval", str(outdir)], obj=ctx_obj)
         assert result.exit_code == 0
-        
+
         # Check if file was created
         files = list(outdir.glob("*_default.md"))
         assert len(files) == 1
@@ -667,7 +667,7 @@ def test_patchset_command_all(tmp_path):
     tree = treelib.Tree()
     tree.create_node("root", "root", data=PatchLayer(id="root"))
     ctx_obj = {'LAYER_TREE': tree}
-    
+
     with patch("shared.helpers.layer_config_exists", return_value=True), \
          patch("commands.patchset.create_all_sets") as mock_create_all:
         from commands.patchset import patchset

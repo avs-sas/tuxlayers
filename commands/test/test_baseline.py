@@ -34,30 +34,30 @@ def temp_repo(tmp_path):
     repo_path = tmp_path / "test_repo"
     repo_path.mkdir()
     repo = Repo.init(repo_path)
-    
+
     # Configure git user for commits
     repo.config_writer().set_value("user", "name", "Test User").release()
     repo.config_writer().set_value("user", "email", "test@example.com").release()
-    
+
     # Create an initial commit
     file = repo_path / "README.md"
     file.write_text("Test repo")
     repo.index.add(["README.md"])
     repo.index.commit("Initial commit")
-    
+
     return str(repo_path)
 
 def test_reset_hard_to_baseline():
     with patch("commands.baseline.Repo") as mock_repo_class:
         mock_repo = mock_repo_class.return_value
         mock_repo.submodules = []
-        
+
         mock_commit = MagicMock()
         mock_commit.parents = ["parent_commit"]
-        
+
         baseline_set = [{"/path": mock_commit}]
         reset_hard_to_baseline("/path", baseline_set)
-        
+
         mock_repo.git.reset.assert_called_with('--hard', "parent_commit")
 
 def test_reverttobaseline_specific_baseline(caplog):
@@ -75,7 +75,7 @@ def test_add_recursive_commit_no_submodules():
         mock_repo = mock_repo_class.return_value
         mock_repo.submodules = []
         mock_repo.working_tree_dir = "/path"
-        
+
         add_recursive_commit("/path", "msg")
         mock_repo.git.commit.assert_called_with('--allow-empty', '-a', '-m', 'msg')
 
@@ -83,7 +83,7 @@ def test_add_recursive_commit_with_add_all():
     with patch("commands.baseline.Repo") as mock_repo_class:
         mock_repo = mock_repo_class.return_value
         mock_repo.submodules = []
-        
+
         add_recursive_commit("/path", "msg", add_newly_created_too=True)
         mock_repo.git.add.assert_called_with('-A')
         mock_repo.git.commit.assert_called_with('--allow-empty', '-m', 'msg')
@@ -102,7 +102,7 @@ def test_baselines_are_valid_empty_keys(caplog):
 def test_listsubmodules_command(temp_repo, caplog):
     caplog.set_level(logging.ERROR)
     runner = CliRunner()
-    
+
     # Invalid baseline set scenario
     with patch("commands.baseline.get_baselines_from_path", return_value=({"repo1": ["b1"], "repo2": ["b1", "b2"]}, [])):
         result = runner.invoke(listsubmodules, ['--workdir', temp_repo])
@@ -114,7 +114,7 @@ def test_get_baselines():
     mock_commit.message = create_baseline_string("v1.0")
     mock_repo.iter_commits.return_value = [mock_commit]
     mock_repo.working_tree_dir = "/repo"
-    
+
     baselines, order = get_baselines(mock_repo)
     assert "v1.0" in baselines
     assert order == ["v1.0"]
@@ -125,7 +125,7 @@ def test_get_baselines_from_path():
         mock_repo = mock_repo_class.return_value
         mock_repo.submodules = []
         mock_repo.working_tree_dir = "/path"
-        
+
         # Mock get_baselines to return some data
         with patch("commands.baseline.get_baselines", return_value=({"v1": []}, ["v1"])):
             baselines, order = get_baselines_from_path("/path", 0, True)
@@ -155,14 +155,14 @@ def test_is_baseline_patch():
 def test_baselines_are_valid():
     # Empty baselines is valid
     assert baselines_are_valid({}) is True
-    
+
     # Matching length
     baselines = {
         "repo1": ["b1", "b2"],
         "repo2": ["b1", "b2"]
     }
     assert baselines_are_valid(baselines) is True
-    
+
     # Mismatch length
     baselines_mismatch = {
         "repo1": ["b1", "b2"],
@@ -203,15 +203,15 @@ def test_baseline_string_helpers():
     message = "test_baseline"
     expected_hash = get_hash(message)
     baseline_str = create_baseline_string(message)
-    
+
     assert get_baseline_prefix() in baseline_str
     assert expected_hash in baseline_str
     assert message in baseline_str
     assert get_baseline_seperator() in baseline_str
-    
+
     assert is_baseline(baseline_str) is True
     assert is_baseline("not a baseline") is False
-    
+
     parts = get_message_parts(baseline_str)
     assert len(parts) == 3
     assert parts[0] == get_baseline_prefix()
@@ -225,10 +225,10 @@ def test_addbaseline_command(temp_repo, caplog):
     caplog.set_level(logging.INFO)
     runner = CliRunner()
     result = runner.invoke(addbaseline, ['--workdir', temp_repo, 'v1.0'])
-    
+
     assert result.exit_code == 0
     assert "Adding baseline commit v1.0 to each repo under" in caplog.text
-    
+
     # Verify the commit exists
     repo = Repo(temp_repo)
     latest_commit = next(repo.iter_commits())
@@ -238,11 +238,11 @@ def test_addbaseline_command(temp_repo, caplog):
 def test_showbaselines_command(temp_repo, caplog):
     caplog.set_level(logging.INFO)
     runner = CliRunner()
-    
+
     # Add a baseline first
     runner.invoke(addbaseline, ['--workdir', temp_repo, 'v1.0'])
     caplog.clear()
-    
+
     result = runner.invoke(showbaselines, ['--workdir', temp_repo])
     assert result.exit_code == 0
     assert "Baselines are valid. Avaliable baselines are:" in caplog.text

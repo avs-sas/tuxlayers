@@ -161,13 +161,13 @@ Created on {{data.timestamp}}
 # Handled layers:
 
 {% for layer in data.layers -%}
-  {{layer.id}}: {{layer.title}}  
+  {{layer.id}}: {{layer.title}}
 {% endfor %}
 
 # Release Overview:
 
 {% for layer in data.layers -%}
-  {{layer.description}}  
+  {{layer.description}}
 {% endfor %}
 
 # Patches
@@ -178,7 +178,7 @@ A patchset creating the following patches was created from the layer definitions
 ## Patch: {{patch.patchfile_basename}}
 {% if patch.comments -%}
 {% for commentLine in patch.comments -%}
-{{commentLine}}  
+{{commentLine}}
 {% endfor %}
 {% else -%}
 *No comment found*
@@ -371,7 +371,7 @@ def add_files(work_dir, files_dir, files):
         commitMessage += files.comment
     baseline.add_recursive_commit(
         work_dir,
-        commitMessage, 
+        commitMessage,
         True # also add newly created files
     )
 

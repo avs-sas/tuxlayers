@@ -6,14 +6,14 @@ This contains the auto-generated base documentation for a patchset created from 
 
 {{data.primaryLayer}} references the following layers:
 {% for layer in data.layers -%}
-- {{layer.id}}: {{layer.title}}  
+- {{layer.id}}: {{layer.title}}
 {% endfor %}
 
 # Detailed release description:
 
 {% for layer in data.layers -%}
 {% if layer.description -%}
-- {{layer.description}} 
+- {{layer.description}}
 {% endif -%}
 {% endfor -%}
 {# enforce whitespace...#}
@@ -26,7 +26,7 @@ Patch: *{{patch.patchfile_basename}}*
 
 {% if patch.comments -%}
 {% for commentLine in patch.comments -%}
-{{commentLine}}  
+{{commentLine}}
 {% endfor -%}
 {% else -%}
 *No comment found*
