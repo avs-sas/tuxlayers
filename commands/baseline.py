@@ -22,6 +22,18 @@ from shared.helpers import exit_with_error, remove_empty_folders, exit_applicati
 # Logging setup...
 logger = logging.getLogger(__name__)
 
+def _get_repo_commit(path, baseline_set):
+    """Helper to find the commit for a specific path in a baseline set."""
+    abspath = os.path.abspath(path)
+    for entry in baseline_set:
+        if abspath in entry:
+            return entry[abspath]
+        # Check for matching absolute paths in the keys
+        for entry_path, commit in entry.items():
+            if os.path.abspath(entry_path) == abspath:
+                return commit
+    return None
+
 @click.command()
 @click.option(
     '--workdir', '-w', required=True,
@@ -70,6 +82,26 @@ def addbaseline(workdir, baseline):
     '''Adds a baseline with the given name to the repository structure.'''
     add_baseline_internal(workdir, baseline)
 
+def _get_oldest_baseline(workdir, baselines):
+    """Finds the name of the oldest baseline (the one farthest from HEAD)."""
+    main_repo = Repo(workdir)
+    distance = -1
+    oldest_baseline = None
+
+    for baseline_name, baseline_set in baselines.items():
+        repo_commit = _get_repo_commit(workdir, baseline_set)
+        if repo_commit is None:
+            # Fallback for complex structures or error handling
+            continue
+
+        # Count commits between baseline and HEAD
+        result = int(main_repo.git.rev_list("--count", f"{repo_commit}..{main_repo.head.commit}"))
+        if result > distance:
+            distance = result
+            oldest_baseline = baseline_name
+
+    return oldest_baseline
+
 @click.command()
 @click.option(
     '--workdir', '-w', required=True,
@@ -88,40 +120,18 @@ def reverttobaseline(workdir, baseline, all, clean):
      by the baseline (removing all later commits and the baseline commit).'''
     workdir = normalize_workdir_path(workdir)
     baselines = get_baselines_from_path(workdir, 0, True)[0]
+
     if all:
         logger.info("Resetting all repos to before the first baseline entry.")
         if len(baselines) == 0:
             if clean:
                 clean_workdir(workdir)
             exit_application("Repository contains no baselines, nothing to remove!")
-        main_repo = Repo(workdir)
-        distance = -1
-        oldest_baseline = None
-        # logger.info(baselines.keys())
-        for baseline_to_check in baselines:
-            repo_commit = None
-            for path in baselines[baseline_to_check]:
-                logger.info(path)
-                if workdir in path:
-                    repo_commit = path[workdir]
-            if repo_commit is None:
-                # first try and do a full path lookup...
-                for path in baselines[baseline_to_check]:
-                    logger.info(path)
-                    abspath = os.path.abspath(workdir)
-                    if abspath in path:
-                        repo_commit = path[abspath]
-                    if repo_commit is None:
-                        exit_with_error("Error during lookup!")
-            result = int(
-                main_repo.git.rev_list(
-                    "--count",
-                    str(repo_commit) + ".." + str(main_repo.head.commit)))
-            if result > distance:
-                distance = result
-                oldest_baseline = baseline_to_check
+
+        oldest_baseline = _get_oldest_baseline(workdir, baselines)
         if oldest_baseline is None:
             exit_with_error("Repo in " + workdir + " contains no marked baselines!")
+
         logger.info("Oldest baseline in set: %s", oldest_baseline)
         reset_hard_to_baseline(workdir, baselines[oldest_baseline])
     else:
@@ -129,8 +139,8 @@ def reverttobaseline(workdir, baseline, all, clean):
             exit_with_error("Either specify all or provide a baseline name")
         if baseline not in baselines:
             exit_with_error("Invalid baseline: " + baseline)
-        logger.info(
-            "Resetting all repos to the commit before baseline %s", baseline)
+
+        logger.info("Resetting all repos to the commit before baseline %s", baseline)
         reset_hard_to_baseline(workdir, baselines[baseline])
 
     if clean:
@@ -144,6 +154,37 @@ def clean_workdir(workdir):
         repo.git.submodule(['foreach', '--recursive', 'git', 'clean', '-xfd'])
     except git.exc.GitError as error:
         exit_with_error("Git error: " + str(error))
+
+def _get_baseline_name_from_commit(commit):
+    """Extracts the baseline name from a commit message."""
+    return get_message_parts(commit.message)[2].strip()
+
+def _get_baseline_pairs(baselines, baseline_order):
+    """Generates pairs of baselines for patch extraction."""
+    baseline_pairs = []
+    for i in reversed(range(len(baseline_order))):
+        current_name = baseline_order[i]
+        # Use first commit in the baseline set to get metadata (they should be identical across repos)
+        first_entry = baselines[current_name][0]
+        first_commit = list(first_entry.values())[0]
+
+        pair = {
+            "from": baselines[current_name],
+            "name": _get_baseline_name_from_commit(first_commit),
+            "parent": ""
+        }
+
+        if i > 0:
+            pair["to"] = baselines[baseline_order[i-1]]
+
+        if i + 1 < len(baseline_order):
+            prev_name = baseline_order[i+1]
+            prev_entry = baselines[prev_name][0]
+            prev_commit = list(prev_entry.values())[0]
+            pair["parent"] = _get_baseline_name_from_commit(prev_commit)
+
+        baseline_pairs.append(pair)
+    return baseline_pairs
 
 @click.command()
 @click.option(
@@ -175,32 +216,12 @@ def createpatches(workdir, outpath, includebaseline):
         exit_with_error("Invalid baseline configuration!")
 
     logger.info("Storing patches in %s", patchdir)
-    baseline_pairs = []
-    logger.info(baseline_order)
-    logger.info(baselines)
-    for i in reversed(range(len(baseline_order))):
-        pair = {"from": baselines[baseline_order[i]]}
-        if i > 0:
-            # last item only holds one...
-            pair["to"] = baselines[baseline_order[i-1]]
-        for entry in baselines[baseline_order[i]]:
-            pair["name"] = get_message_parts(
-                    entry[list(entry.keys())[0]].message
-                )[2].strip()
-        if i+1 is not len(baselines):
-            # fetch the previous one
-            for entry in baselines[baseline_order[i+1]]:
-                pair["parent"] = get_message_parts(
-                        entry[list(entry.keys())[0]].message
-                    )[2].strip()
-        else:
-            pair["parent"] = ""
-        baseline_pairs.append(pair)
+    baseline_pairs = _get_baseline_pairs(baselines, baseline_order)
 
     logger.info(pprint.pformat(baseline_pairs, indent=2))
 
     for pair in baseline_pairs:
-        if len(pair) > 4 or len(pair) < 3:
+        if not (3 <= len(pair) <= 4):
             exit_with_error("Invalid baseline pair configuration!")
         result = extract_patches(
             workdir,
@@ -248,6 +269,39 @@ def extract_patches(path, base_dir, patchdir, baseline_pair, include_baseline):
     return result
 
 
+def _get_commit_hashes(path, from_commit, to_commit):
+    """Retrieves first and last commit hashes between two points."""
+    first_hash = None
+    last_hash = None
+    commit_obj = None
+
+    if from_commit.hexsha != getattr(to_commit, 'hexsha', None):
+        pydriller_repo = pydriller.Repository(
+            path,
+            from_commit=from_commit.hexsha,
+            to_commit=to_commit.hexsha)
+    else:
+        pydriller_repo = pydriller.Repository(path, single=from_commit.hexsha)
+
+    for commit in pydriller_repo.traverse_commits():
+        if first_hash is None:
+            first_hash = commit.hash
+        last_hash = commit.hash
+        commit_obj = commit
+
+    return first_hash, last_hash, commit_obj
+
+def _export_patches(path, patch_dir, first_hash, last_hash, commit_obj):
+    """Uses git format-patch to export commits as patches."""
+    repo = Repo(path)
+    if first_hash == last_hash:
+        if commit_obj is not None:
+            repo.git.format_patch('-o', patch_dir, commit_obj.hash)
+        else:
+            exit_with_error("Invalid commit during lookup!")
+    else:
+        repo.git.format_patch('-o', patch_dir, f"{first_hash}..{last_hash}")
+
 def extract_patches_for_repo(
         path,
         base_dir,
@@ -256,99 +310,51 @@ def extract_patches_for_repo(
         include_baseline
         ):
     '''Fetches all patches from a repo between certain baselines'''
-    logger.info("Handling:")
-    logger.info(baseline_pair)
-    logger.info("in:")
+    logger.info("Handling baseline pair in: %s", path)
     path = os.path.abspath(path)
-    logger.info(path)
-    # we assume a valid configuration, as in:
-    # all repos in "from" have an entry in "to"
 
-    result = None
-    for entry in baseline_pair["from"]:
-        if path in entry.keys():
-            from_commit = entry[path]
-            to_commit = None
+    # Find the corresponding 'from' entry for this path
+    from_commit = _get_repo_commit(path, baseline_pair["from"])
+    if from_commit is None:
+        return None
 
-            if "to" in baseline_pair:
-                for to_entry in baseline_pair["to"]:
-                    if path in to_entry.keys():
-                        logger.info(path)
-                        to_commit = to_entry[path]
-                if to_commit is None:
-                    exit_with_error("Invalid baseline pair configuration!")
+    to_commit = None
+    if "to" in baseline_pair:
+        to_commit = _get_repo_commit(path, baseline_pair["to"])
+        if to_commit is None:
+            exit_with_error("Invalid baseline pair configuration!")
 
-            relative_path = os.path.relpath(path, base_dir)
-            first_hash = None
-            last_hash = None
-            pydriller_repo = None
-            if (
-                "to" in baseline_pair
-                and from_commit.hexsha is not to_commit.hexsha
-            ):
-                pydriller_repo = pydriller.Repository(
-                    path,
-                    from_commit=from_commit.hexsha,
-                    to_commit=to_commit.hexsha)
-            else:
-                pydriller_repo = pydriller.Repository(path, single=from_commit.hexsha)
-            commit = None
-            for commit in pydriller_repo.traverse_commits():
-                if first_hash is None:
-                    first_hash = commit.hash
-                last_hash = commit.hash
-            logger.info(first_hash)
-            logger.info(last_hash)
-            logger.info(pydriller_repo)
+    relative_path = os.path.relpath(path, base_dir)
+    first_hash, last_hash, commit_obj = _get_commit_hashes(path, from_commit, to_commit)
 
-            patch_dir = os.path.join(
-                patchdir,
-                baseline_pair["name"],
-                relative_path)
-            result = data.PatchLayer(
-                id=baseline_pair["name"],
-                parent=baseline_pair["parent"],
-                title="Auto-generated layer for baseline: "+ baseline_pair["name"],
-                description="Auto-generated layer for baseline: "
-                + baseline_pair["name"])
-            if first_hash and last_hash:
-                repo = Repo(path)
-                if first_hash is last_hash:
-                    if commit is not None:
-                        repo.git.format_patch('-o', patch_dir, commit.hash)
-                    else:
-                        exit_with_error("Invalid commit during lookup!")
-                else:
-                    repo.git.format_patch(
-                        '-o',
-                        patch_dir,
-                        str(first_hash) + ".." + str(last_hash))
+    patch_dir = os.path.join(patchdir, baseline_pair["name"], relative_path)
+    result = data.PatchLayer(
+        id=baseline_pair["name"],
+        parent=baseline_pair["parent"],
+        title=f"Auto-generated layer for baseline: {baseline_pair['name']}",
+        description=f"Auto-generated layer for baseline: {baseline_pair['name']}")
 
-                if not include_baseline:
-                # this is a bit hacky but: lets remove the baseline patches
-                # if based on created filename...
-                ## TODO: Do this right, e.g.: don't create the patches in the first place...
-                    patch_files = glob.glob(os.path.join(patch_dir, "*.patch"))
-                    for file in patch_files:
-                        logger.info("----------------------------------- File: %s", file)
-                        if is_baseline_patch(os.path.basename(file)):
-                            logger.info("----------------------------------- Deleting %s", file)
-                            os.remove(file)
+    if first_hash and last_hash:
+        _export_patches(path, patch_dir, first_hash, last_hash, commit_obj)
 
-                # browse the created patches and add them to the patches list
-                patch_files = glob.glob(os.path.join(patch_dir, "*.patch"))
-                for file in sorted(patch_files):
-                    logger.info(file)
-                    result.patches.append(
-                        data.PatchConfig(
-                            basePath=relative_path,
-                            patch=os.path.relpath(file, patchdir),
-                            updateModulesAfterPatch=False)
-                        )
-            else:
-                logger.warning("Missing at least one hash to export")
-                logger.warning(first_hash)
-                logger.warning(last_hash)
+        if not include_baseline:
+            patch_files = glob.glob(os.path.join(patch_dir, "*.patch"))
+            for file in patch_files:
+                if is_baseline_patch(os.path.basename(file)):
+                    logger.info("Deleting baseline patch: %s", file)
+                    os.remove(file)
+
+        # browse the created patches and add them to the patches list
+        patch_files = glob.glob(os.path.join(patch_dir, "*.patch"))
+        for file in sorted(patch_files):
+            result.patches.append(
+                data.PatchConfig(
+                    basePath=relative_path,
+                    patch=os.path.relpath(file, patchdir),
+                    updateModulesAfterPatch=False)
+                )
+    else:
+        logger.warning("Missing hashes to export for %s: %s..%s", path, first_hash, last_hash)
 
     # clean up the created empty patch folders
     remove_empty_folders(patchdir, False)
@@ -365,7 +371,7 @@ def get_baselines(repo):
     order = []
     for commit in repo.iter_commits():
         if is_baseline(commit.message):
-            key = get_message_parts(commit.message)[2].strip()
+            key = _get_baseline_name_from_commit(commit)
             if key not in baselines:
                 baselines[key] = []
             if key not in order:
@@ -493,26 +499,17 @@ def reset_hard_to_baseline(path, baseline):
         logger.info(module)
         reset_hard_to_baseline(
             module.module().working_tree_dir, baseline)
-    repo_commit = None
-    logger.info(baseline)
-    logger.info(path)
-    for baseline_set in baseline:
-        if path in baseline_set:
-            repo_commit = baseline_set[path]
+
+    repo_commit = _get_repo_commit(path, baseline)
     if repo_commit is None:
-        # first try and do a full path lookup...
-        abspath = os.path.abspath(path)
-        for baseline_set in baseline:
-            if abspath in baseline_set:
-                repo_commit = baseline_set[abspath]
-        if repo_commit is None:
-            exit_with_error("Could not find baseline commit in repo " + path)
+        exit_with_error("Could not find baseline commit in repo " + path)
+
     logger.info("path: %s", path)
     logger.info(repo_commit)
     logger.info(repo_commit.parents)
     if not repo_commit.parents:
         exit_with_error("Invalid repo configuration: commit " +
-                        repo_commit + " has no parents!")
+                        str(repo_commit) + " has no parents!")
     new_commit = repo_commit.parents[0]
     logger.info("Resetting to %s", new_commit)
     repo.git.reset('--hard', new_commit)
