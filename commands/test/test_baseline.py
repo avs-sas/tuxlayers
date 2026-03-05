@@ -25,7 +25,9 @@ from commands.baseline import (
     get_baselines_from_path,
     createpatches,
     add_recursive_commit,
-    reset_hard_to_baseline
+    reset_hard_to_baseline,
+    extract_patches,
+    extract_patches_for_repo
 )
 from unittest.mock import MagicMock, patch
 
@@ -247,3 +249,364 @@ def test_showbaselines_command(temp_repo, caplog):
     assert result.exit_code == 0
     assert "Baselines are valid. Avaliable baselines are:" in caplog.text
     assert "- v1.0" in caplog.text
+
+def test_reverttobaseline_all_flag_with_baselines(temp_repo, caplog):
+    caplog.set_level(logging.INFO)
+    runner = CliRunner()
+    
+    # Mocking baselines for --all flag
+    mock_commit_1 = MagicMock()
+    mock_commit_1.hexsha = "abc"
+    mock_commit_1.message = "__tuxLayers_baseline__ ||| hash ||| b1"
+    
+    mock_commit_2 = MagicMock()
+    mock_commit_2.hexsha = "def"
+    mock_commit_2.message = "__tuxLayers_baseline__ ||| hash ||| b2"
+    
+    # Distance mocking: b2 is "further" from HEAD
+    baselines = {
+        "b1": [{temp_repo: mock_commit_1}],
+        "b2": [{temp_repo: mock_commit_2}]
+    }
+    
+    with patch("commands.baseline.get_baselines_from_path", return_value=(baselines, ["b1", "b2"])), \
+         patch("commands.baseline.Repo") as mock_repo_class, \
+         patch("commands.baseline.reset_hard_to_baseline") as mock_reset:
+        
+        mock_repo = mock_repo_class.return_value
+        mock_repo.head.commit = "HEAD"
+        # rev_list count mock: b2 is older (higher count)
+        mock_repo.git.rev_list.side_effect = ["5", "10"] 
+        
+        result = runner.invoke(reverttobaseline, ["--workdir", temp_repo, "--all"])
+        assert result.exit_code == 0
+        assert "Oldest baseline in set: b2" in caplog.text
+        mock_reset.assert_called_once()
+
+def test_reverttobaseline_all_flag_full_path_lookup(temp_repo, caplog):
+    caplog.set_level(logging.INFO)
+    runner = CliRunner()
+    
+    mock_commit = MagicMock()
+    mock_commit.message = "__tuxLayers_baseline__ ||| hash ||| b1"
+    
+    # Mocking a full path match (abspath)
+    baselines = {
+        "b1": [{os.path.abspath(temp_repo): mock_commit}]
+    }
+    
+    with patch("commands.baseline.get_baselines_from_path", return_value=(baselines, ["b1"])), \
+         patch("commands.baseline.Repo") as mock_repo_class, \
+         patch("commands.baseline.reset_hard_to_baseline"):
+        
+        mock_repo = mock_repo_class.return_value
+        mock_repo.git.rev_list.return_value = "5"
+        
+        result = runner.invoke(reverttobaseline, ["--workdir", temp_repo, "--all"])
+        assert result.exit_code == 0
+        assert "Oldest baseline in set: b1" in caplog.text
+
+def test_get_baselines_from_path_recursive_mock(caplog):
+    caplog.set_level(logging.INFO)
+    # Mock Repo object and submodules
+    mock_repo = MagicMock()
+    mock_repo.working_tree_dir = "/path"
+    
+    mock_sub = MagicMock()
+    mock_sub.module.return_value.working_tree_dir = "/subrepo"
+    mock_repo.submodules = [mock_sub]
+    
+    # We need to make sure Repo(/subrepo) has no submodules to stop recursion
+    mock_repo_sub = MagicMock()
+    mock_repo_sub.working_tree_dir = "/subrepo"
+    mock_repo_sub.submodules = []
+    
+    def side_effect(p):
+        if p == "/path": return mock_repo
+        return mock_repo_sub
+    
+    with patch("commands.baseline.Repo", side_effect=side_effect), \
+         patch("commands.baseline.get_baselines") as mock_get_baselines:
+        
+        mock_get_baselines.side_effect = [
+            ({"b1": [{"/path": "c1"}]}, ["b1"]),
+            ({"b1": [{"/subrepo": "sc1"}]}, ["b1"])
+        ]
+        
+        baselines, order = get_baselines_from_path("/path", 0, False)
+        assert "b1" in baselines
+        assert len(baselines["b1"]) == 2
+
+def test_createpatches_invalid_set(tmp_path, caplog):
+    caplog.set_level(logging.ERROR)
+    runner = CliRunner()
+    outpath = tmp_path / "out_createpatches_invalid"
+    with patch("commands.baseline.baselines_are_valid", return_value=False), \
+         patch("commands.baseline.get_baselines_from_path", return_value=({}, [])):
+        with patch("commands.baseline.exit_with_error") as mock_exit:
+            runner.invoke(createpatches, ["--workdir", ".", str(outpath)])
+            mock_exit.assert_called_with("Invalid baseline configuration!")
+
+def test_extract_patches_recursive(tmp_path):
+    # Mock Repo and submodules
+    mock_repo = MagicMock()
+    mock_sub = MagicMock()
+    mock_sub.module.return_value.working_tree_dir = "/subrepo"
+    mock_repo.submodules = [mock_sub]
+    
+    # Prevent infinite recursion: ensure subrepo Repo mock has no submodules
+    mock_repo_sub = MagicMock()
+    mock_repo_sub.working_tree_dir = "/subrepo"
+    mock_repo_sub.submodules = []
+    
+    def side_effect(p):
+        if p == "/path": return mock_repo
+        return mock_repo_sub
+    
+    with patch("commands.baseline.Repo", side_effect=side_effect), \
+         patch("commands.baseline.extract_patches_for_repo") as mock_extract_repo:
+        
+        baseline_pair = {"name": "b1", "parent": "p1"}
+        extract_patches("/path", "/base", "/patchdir", baseline_pair, False)
+        
+        # extract_patches_for_repo should be called for /path and /subrepo
+        assert mock_extract_repo.call_count == 2
+
+def test_extract_patches_for_repo_no_hashes(caplog):
+    caplog.set_level(logging.WARNING)
+    baseline_pair = {
+        "name": "b1",
+        "parent": "p1",
+        "from": [{"/path": MagicMock()}]
+    }
+    
+    with patch("commands.baseline.pydriller.Repository") as mock_pydriller:
+        mock_pydriller.return_value.traverse_commits.return_value = []
+        
+        from commands.baseline import extract_patches_for_repo
+        # We need to mock remove_empty_folders to avoid it exiting if path doesn't exist
+        with patch("commands.baseline.remove_empty_folders"):
+            result = extract_patches_for_repo("/path", "/base", "/patchdir", baseline_pair, False)
+            assert "Missing at least one hash to export" in caplog.text
+            assert result.id == "b1"
+
+def test_extract_patches_for_repo_with_hashes(tmp_path):
+    patchdir = tmp_path / "patches"
+    patchdir.mkdir()
+    
+    m_from = MagicMock()
+    m_from.hexsha = "abc"
+    m_to = MagicMock()
+    m_to.hexsha = "def"
+    
+    baseline_pair = {
+        "name": "b1",
+        "parent": "p1",
+        "from": [{"/path": m_from}],
+        "to": [{"/path": m_to}]
+    }
+    
+    with patch("commands.baseline.pydriller.Repository") as mock_pydriller:
+        c1 = MagicMock()
+        c1.hash = "hash1"
+        c2 = MagicMock()
+        c2.hash = "hash2"
+        mock_pydriller.return_value.traverse_commits.return_value = [c1, c2]
+        
+        with patch("commands.baseline.Repo") as mock_repo_class, \
+             patch("commands.baseline.glob.glob") as mock_glob, \
+             patch("commands.baseline.remove_empty_folders"):
+            
+            # format_patch should be called
+            mock_glob.side_effect = [
+                [], # first call for baseline removal (none found)
+                [str(patchdir / "0001.patch")] # second call for patches list
+            ]
+            
+            from commands.baseline import extract_patches_for_repo
+            result = extract_patches_for_repo("/path", "/path", str(patchdir), baseline_pair, False)
+            
+            assert result.id == "b1"
+            assert len(result.patches) == 1
+            mock_repo_class.return_value.git.format_patch.assert_called()
+
+def test_createpatches_basic_flow(tmp_path):
+    runner = CliRunner()
+    outpath = tmp_path / "out"
+    
+    m1 = MagicMock()
+    m1.message = "__tuxLayers_baseline__ ||| h1 ||| b1"
+    m2 = MagicMock()
+    m2.message = "__tuxLayers_baseline__ ||| h2 ||| b2"
+    
+    baselines = {
+        "b1": [{"/repo": m1}],
+        "b2": [{"/repo": m2}]
+    }
+    order = ["b2", "b1"] # reversed newest to oldest
+    
+    with patch("commands.baseline.get_baselines_from_path", return_value=(baselines, order)), \
+         patch("commands.baseline.extract_patches") as mock_extract:
+        
+        mock_layer = MagicMock()
+        mock_layer.to_json.return_value = '{"id": "b1"}'
+        mock_extract.return_value = mock_layer
+        
+        result = runner.invoke(createpatches, ["--workdir", ".", str(outpath)])
+        assert result.exit_code == 0
+        assert (outpath / "b1.json").exists()
+        assert (outpath / "b2.json").exists()
+
+def test_reset_hard_to_baseline_no_commit_error():
+    with patch("commands.baseline.Repo") as mock_repo_class:
+        mock_repo = mock_repo_class.return_value
+        mock_repo.submodules = []
+        
+        with patch("commands.baseline.exit_with_error", side_effect=SystemExit(1)) as mock_exit:
+            with pytest.raises(SystemExit):
+                reset_hard_to_baseline("/path", [{"/other": "c1"}])
+            mock_exit.assert_called_with("Could not find baseline commit in repo /path")
+
+def test_is_baseline_patch_not_patch():
+    assert is_baseline_patch("file.txt") is False
+
+def test_reverttobaseline_all_flag_distance_lookup_error(temp_repo, caplog):
+    caplog.set_level(logging.ERROR)
+    runner = CliRunner()
+    
+    mock_commit = MagicMock()
+    mock_commit.message = "__tuxLayers_baseline__ ||| hash ||| b1"
+    
+    # Path doesn't match workdir nor abspath
+    baselines = {
+        "b1": [{"/wrong/path": mock_commit}]
+    }
+    
+    with patch("commands.baseline.get_baselines_from_path", return_value=(baselines, ["b1"])), \
+         patch("commands.baseline.Repo"), \
+         patch("commands.baseline.exit_with_error", side_effect=SystemExit(1)) as mock_exit:
+        
+        result = runner.invoke(reverttobaseline, ["--workdir", temp_repo, "--all"])
+        assert result.exit_code == 1
+        mock_exit.assert_called_with("Error during lookup!")
+
+def test_listsubmodules_invalid_set_error(caplog):
+    caplog.set_level(logging.ERROR)
+    runner = CliRunner()
+    with patch("commands.baseline.get_baselines_from_path", return_value=({"repo1": ["b1"], "repo2": ["b1", "b2"]}, [])):
+        runner.invoke(listsubmodules, ['--workdir', '.'])
+        assert "Invalid baseline set!" in caplog.text
+
+def test_extract_patches_for_repo_single_commit(tmp_path):
+    patchdir = tmp_path / "patches"
+    patchdir.mkdir()
+    
+    m_from = MagicMock()
+    m_from.hexsha = "abc"
+    
+    baseline_pair = {
+        "name": "b1",
+        "parent": "p1",
+        "from": [{"/path": m_from}]
+    }
+    
+    with patch("commands.baseline.pydriller.Repository") as mock_pydriller:
+        c1 = MagicMock()
+        c1.hash = "hash1"
+        mock_pydriller.return_value.traverse_commits.return_value = [c1]
+        
+        with patch("commands.baseline.Repo") as mock_repo_class, \
+             patch("commands.baseline.glob.glob", return_value=[]), \
+             patch("commands.baseline.remove_empty_folders"):
+            
+            from commands.baseline import extract_patches_for_repo
+            extract_patches_for_repo("/path", "/path", str(patchdir), baseline_pair, False)
+            mock_repo_class.return_value.git.format_patch.assert_called_with('-o', os.path.join(str(patchdir), "b1", "."), "hash1")
+
+def test_extract_patches_for_repo_delete_baseline_patches(tmp_path):
+    patchdir = tmp_path / "patches"
+    patchdir.mkdir()
+    
+    baseline_pair = {
+        "name": "b1",
+        "parent": "p1",
+        "from": [{"/path": MagicMock()}]
+    }
+    
+    with patch("commands.baseline.pydriller.Repository") as mock_pydriller:
+        mock_pydriller.return_value.traverse_commits.return_value = [MagicMock()]
+        
+        with patch("commands.baseline.Repo"), \
+             patch("commands.baseline.glob.glob") as mock_glob, \
+             patch("commands.baseline.remove_empty_folders"), \
+             patch("os.remove") as mock_remove:
+            
+            # First glob call for deletion logic
+            mock_glob.side_effect = [
+                [str(patchdir / f"0001_some_{get_baseline_prefix()}.patch")], # deletion loop
+                [] # patches list loop
+            ]
+            
+            from commands.baseline import extract_patches_for_repo
+            extract_patches_for_repo("/path", "/path", str(patchdir), baseline_pair, False)
+            mock_remove.assert_called_once()
+
+def test_extract_patches_for_repo_from_equals_to(tmp_path):
+    patchdir = tmp_path / "patches"
+    patchdir.mkdir()
+    
+    m_commit = MagicMock()
+    m_commit.hexsha = "abc"
+    
+    baseline_pair = {
+        "name": "b1",
+        "parent": "p1",
+        "from": [{"/path": m_commit}],
+        "to": [{"/path": m_commit}]
+    }
+    
+    with patch("commands.baseline.pydriller.Repository") as mock_pydriller:
+        mock_pydriller.return_value.traverse_commits.return_value = []
+        
+        with patch("commands.baseline.Repo"), \
+             patch("commands.baseline.remove_empty_folders"):
+            
+            from commands.baseline import extract_patches_for_repo
+            extract_patches_for_repo("/path", "/path", str(patchdir), baseline_pair, False)
+            # Check pydriller called with single=...
+            mock_pydriller.assert_called_with("/path", single="abc")
+
+def test_showbaselines_invalid_error(caplog):
+    caplog.set_level(logging.ERROR)
+    runner = CliRunner()
+    with patch("commands.baseline.get_baselines_from_path", return_value=({"r1": [1], "r2": [1, 2]}, [])):
+        runner.invoke(showbaselines, ['--workdir', '.'])
+        assert "Invalid baseline set!" in caplog.text
+
+def test_reverttobaseline_no_baselines_clean(temp_repo, caplog):
+    caplog.set_level(logging.INFO)
+    runner = CliRunner()
+    with patch("commands.baseline.get_baselines_from_path", return_value=({}, [])):
+        with patch("commands.baseline.clean_workdir") as mock_clean:
+            runner.invoke(reverttobaseline, ["--workdir", temp_repo, "--all", "--clean"])
+            mock_clean.assert_called_once()
+
+def test_add_recursive_commit_git_error():
+    with patch("commands.baseline.Repo") as mock_repo_class:
+        mock_repo = mock_repo_class.return_value
+        mock_repo.submodules = []
+        import git
+        mock_repo.git.commit.side_effect = git.exc.GitError("error")
+        # add_recursive_commit doesn't catch GitError, it will bubble up
+        with pytest.raises(git.exc.GitError):
+            add_recursive_commit("/path", "msg")
+
+def test_clean_workdir_error(caplog):
+    caplog.set_level(logging.ERROR)
+    with patch("commands.baseline.Repo") as mock_repo_class:
+        mock_repo = mock_repo_class.return_value
+        import git
+        mock_repo.git.clean.side_effect = git.exc.GitError("clean error")
+        with patch("commands.baseline.exit_with_error") as mock_exit:
+            clean_workdir("/path")
+            mock_exit.assert_called()
