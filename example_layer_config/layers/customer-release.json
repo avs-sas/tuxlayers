@@ -1,0 +1,27 @@
+{
+  "id": "customer-release",
+  "parent": "hardware-support",
+  "title": "Enterprise Customer Release Package",
+  "description": "Applies custom branding and enables premium features for the final customer build.",
+  "patches": [
+    {
+      "basePath": "src/app/branding",
+      "patch": "",
+      "copyPattern": "**/*.png",
+      "copySourceDir": "customer_assets/logos",
+      "comment": "Copies all high-resolution customer logos into the application asset folder."
+    },
+    {
+      "basePath": "src/app",
+      "patch": "ui/0003-enable-sso.patch",
+      "tags": "feature, enterprise",
+      "comment": "Unlocks Single Sign-On (SSO) integration in the UI."
+    },
+    {
+      "basePath": "scripts/post-build",
+      "patch": "",
+      "script": "generate_release_notes.py",
+      "comment": "Automatically generates markdown release notes based on the applied patches."
+    }
+  ]
+}

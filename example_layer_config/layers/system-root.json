@@ -1,0 +1,6 @@
+{
+  "id": "system-root",
+  "title": "System Root Configuration",
+  "description": "Global entry point for all OS and hardware variants.",
+  "patches": []
+}

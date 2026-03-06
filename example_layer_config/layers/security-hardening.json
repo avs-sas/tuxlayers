@@ -1,0 +1,22 @@
+{
+  "id": "security-hardening",
+  "parents": ["base-os", "realtime-os"],
+  "tree_ids": ["base-os-hardened", "realtime-os-hardened"],
+  "title": "Universal Security Hardening",
+  "description": "Applies security policies that are common across all OS variants.",
+  "patches": [
+    {
+      "basePath": "/etc",
+      "patch": "",
+      "copyPattern": "audit.rules",
+      "copySourceDir": "security_configs",
+      "comment": "Installs the system-wide security auditing rules."
+    },
+    {
+      "basePath": "scripts/security",
+      "patch": "",
+      "script": "disable_root_ssh.sh",
+      "comment": "Script that disables root SSH login for enhanced security."
+    }
+  ]
+}

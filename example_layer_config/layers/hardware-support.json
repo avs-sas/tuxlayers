@@ -1,0 +1,23 @@
+{
+  "id": "hardware-support",
+  "parent": "base-os-hardened",
+  "title": "Hardware Abstraction Layer Support",
+  "description": "Enables support for custom hardware peripherals and performs sanity checks on the environment.",
+  "patches": [
+    {
+      "basePath": "src/drivers",
+      "patch": "drivers/0002-wifi-stability.patch",
+      "tags": "driver, wifi",
+      "updateModulesAfterPatch": true,
+      "comment": "Fixes race condition in the WiFi driver that could lead to crashes."
+    },
+    {
+      "basePath": "scripts/validation",
+      "patch": "",
+      "script": "verify_integrity.sh",
+      "scriptArgs": ["--full-scan", "--log-level", "DEBUG"],
+      "scriptResources": ["resources/expected_hashes.txt"],
+      "comment": "Runs a script to verify that all hardware drivers are compatible with the base kernel."
+    }
+  ]
+}

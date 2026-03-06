@@ -1,0 +1,14 @@
+{
+  "id": "realtime-os",
+  "parent": "system-root",
+  "title": "Real-Time Operating System Layer",
+  "description": "Kernel configurations for low-latency and deterministic behavior.",
+  "patches": [
+    {
+      "basePath": "src/kernel",
+      "patch": "kernel/rt/0001-enable-preempt-rt.patch",
+      "tags": "kernel, realtime",
+      "comment": "Applies the PREEMPT_RT patchset to the kernel."
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "base-os",
+  "parent": "system-root",
+  "title": "Base Operating System Layer",
+  "description": "Fundamental system patches and kernel optimizations for the generic platform.",
+  "patches": [
+    {
+      "basePath": "src/kernel",
+      "patch": "kernel/0001-fix-scheduler.patch",
+      "tags": "kernel, core",
+      "comment": "Optimizes the CFS scheduler for multicore processors."
+    },
+    {
+      "basePath": ".",
+      "patch": "",
+      "copyPattern": "sysctl.conf",
+      "copySourceDir": "system_configs",
+      "comment": "Applies system-wide sysctl settings."
+    }
+  ]
+}
