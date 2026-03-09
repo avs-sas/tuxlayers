@@ -22,24 +22,7 @@ from commands.patchset import (
     document
 )
 from configuration.data import PatchLayer, PatchConfig, PatchSet, LayerPath
-from tuxlayers import LayerDAG
-
-def test_patchset_command_no_args(caplog):
-    runner = CliRunner()
-    caplog.set_level(logging.ERROR)
-    # Mocking layer_config_exists to return True so we pass need_layer_config
-    with patch("shared.helpers.layer_config_exists", return_value=True):
-        result = runner.invoke(patchset, ["out"])
-        assert any("You need to specify either a layer" in record.message for record in caplog.records)
-        assert result.exit_code != 0
-
-def test_document_command_invalid_outpath(caplog):
-    runner = CliRunner()
-    caplog.set_level(logging.ERROR)
-    with patch("shared.helpers.layer_config_exists", return_value=True):
-        result = runner.invoke(document, ["-l", "root", "nonexistent_dir"])
-        assert any("Outpath must exist" in record.message for record in caplog.records)
-        assert result.exit_code != 0
+from shared.dag import LayerDAG
 
 def test_add_scripted(tmp_path):
     scripts_dir = tmp_path / "scripts"

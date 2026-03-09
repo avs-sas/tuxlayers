@@ -3,7 +3,7 @@ import logging
 from click.testing import CliRunner
 from commands.info import info
 from configuration.data import PatchLayer
-from tuxlayers import LayerDAG
+from shared.dag import LayerDAG
 
 @pytest.fixture
 def mock_ctx_obj():
