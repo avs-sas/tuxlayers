@@ -6,7 +6,9 @@ from configuration.data import (
     PatchLayer,
     PatchInfo,
     LayerInfo,
-    Documentation
+    Documentation,
+    LayerPath,
+    LayerPathSet
 )
 
 def test_patch_config_valid():
@@ -50,27 +52,6 @@ def test_patch_config_has_tags():
     p.tags = ""
     assert p.has_tags() is False
 
-def test_patch_layer_tree_ids_valid():
-    # No parents, no tree_ids
-    pl = PatchLayer(id="L1")
-    assert pl.tree_ids_valid() is True
-
-    # Parents, matching tree_ids
-    pl = PatchLayer(id="L1", parents=["P1", "P2"], tree_ids=["T1", "T2"])
-    assert pl.tree_ids_valid() is True
-
-    # Parents, no tree_ids
-    pl = PatchLayer(id="L1", parents=["P1", "P2"])
-    assert pl.tree_ids_valid() is True
-
-    # Parents, mismatch length tree_ids
-    pl = PatchLayer(id="L1", parents=["P1", "P2"], tree_ids=["T1"])
-    assert pl.tree_ids_valid() is False
-
-    # Parents, empty tree_id in list
-    pl = PatchLayer(id="L1", parents=["P1", "P2"], tree_ids=["T1", ""])
-    assert pl.tree_ids_valid() is False
-
 def test_patch_layer_have_parent():
     pl = PatchLayer(id="L1", parent="P1")
     assert pl.have_parent() is True
@@ -91,17 +72,9 @@ def test_patch_layer_is_multi_parent():
     pl = PatchLayer(id="L1", parent="P1")
     assert pl.is_multi_parent() is False
 
-def test_patch_layer_get_id_from_index():
-    pl = PatchLayer(id="L1", parents=["P1", "P2"], tree_ids=["T1", "T2"])
-    assert pl.get_id_from_index(0) == "T1"
-    assert pl.get_id_from_index(1) == "T2"
-
-    pl = PatchLayer(id="L1", parents=["P1", "P2"])
-    assert pl.get_id_from_index(0) == "L1_1"
-    assert pl.get_id_from_index(1) == "L1_2"
-
-    pl = PatchLayer(id="L1", parents=["P1", "P2"], tree_ids=["T1"])
-    assert pl.get_id_from_index(0) == ""
+def test_patch_layer_layers_field():
+    pl = PatchLayer(id="L1", layers=["root", "mid", "L1"])
+    assert pl.layers == ["root", "mid", "L1"]
 
 def test_patch_set():
     ps = PatchSet(patches=[PatchConfig(basePath=".", patch="p1.patch")])
@@ -117,6 +90,18 @@ def test_layer_info():
     assert li.id == "L1"
     assert li.title == "Title"
     assert li.description == "Desc"
+
+def test_layer_path():
+    lp = LayerPath(id="path1", target_layer="L1", layers=["root", "L1"], title="Path 1")
+    assert lp.id == "path1"
+    assert lp.target_layer == "L1"
+    assert lp.layers == ["root", "L1"]
+
+def test_layer_path_set():
+    lp1 = LayerPath(id="p1", target_layer="L1")
+    lps = LayerPathSet(paths=[lp1])
+    assert len(lps.paths) == 1
+    assert lps.paths[0].id == "p1"
 
 def test_documentation():
     now = datetime.datetime.now()

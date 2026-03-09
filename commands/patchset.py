@@ -190,7 +190,7 @@ A patchset creating the following patches was created from the layer definitions
 
 '''
 
-    for referred_layer in get_all_referred_layers(layer, ctx.obj['LAYER_TREE']):
+    for referred_layer in get_all_referred_layers(layer, ctx.obj['LAYER_DAG']):
         doc_data.layers.append(
             data.LayerInfo(
                 id=referred_layer.id,

@@ -1,6 +1,5 @@
 import pytest
 import os
-import treelib
 import subprocess
 import logging
 import git
@@ -22,7 +21,8 @@ from commands.patchset import (
     patchset,
     document
 )
-from configuration.data import PatchLayer, PatchConfig, PatchSet
+from configuration.data import PatchLayer, PatchConfig, PatchSet, LayerPath
+from tuxlayers import LayerDAG
 
 def test_patchset_command_no_args(caplog):
     runner = CliRunner()
@@ -110,39 +110,39 @@ def test_extract_patch_commente_no_comments(tmp_path):
     assert comments == []
 
 def test_get_all_referred_layers():
-    tree = treelib.Tree()
+    dag = LayerDAG()
     layer1 = PatchLayer(id="root", title="Root Layer")
     layer2 = PatchLayer(id="mid", parent="root", title="Mid Layer")
     layer3 = PatchLayer(id="leaf", parent="mid", title="Leaf Layer")
 
-    tree.create_node(layer1.id, layer1.id, data=layer1)
-    tree.create_node(layer2.id, layer2.id, parent=layer1.id, data=layer2)
-    tree.create_node(layer3.id, layer3.id, parent=layer2.id, data=layer3)
+    dag.create_node(layer1.id, tag=layer1.id, data=layer1)
+    dag.create_node(layer2.id, tag=layer2.id, parent=layer1.id, data=layer2)
+    dag.create_node(layer3.id, tag=layer3.id, parent=layer2.id, data=layer3)
 
-    layers = list(get_all_referred_layers("leaf", tree))
+    layers = list(get_all_referred_layers("leaf", dag))
     assert len(layers) == 3
     assert layers[0].id == "root"
     assert layers[1].id == "mid"
     assert layers[2].id == "leaf"
 
 def test_get_all_referred_layers_unknown(capsys):
-    tree = treelib.Tree()
+    dag = LayerDAG()
     with pytest.raises(SystemExit):
-        get_all_referred_layers("unknown", tree)
+        get_all_referred_layers("unknown", dag)
 
 def test_create_patchset():
-    tree = treelib.Tree()
+    dag = LayerDAG()
     p1 = PatchConfig(basePath=".", patch="p1.patch")
     p2 = PatchConfig(basePath=".", patch="p2.patch")
 
     layer1 = PatchLayer(id="root", title="Root", patches=[p1])
     layer2 = PatchLayer(id="leaf", parent="root", title="Leaf", patches=[p2])
 
-    tree.create_node(layer1.id, layer1.id, data=layer1)
-    tree.create_node(layer2.id, layer2.id, parent=layer1.id, data=layer2)
+    dag.create_node(layer1.id, tag=layer1.id, data=layer1)
+    dag.create_node(layer2.id, tag=layer2.id, parent=layer1.id, data=layer2)
 
     ctx = MagicMock()
-    ctx.obj = {'LAYER_TREE': tree}
+    ctx.obj = {'LAYER_DAG': dag}
 
     patchset = create_patchset(ctx, "leaf", [], [])
 
@@ -153,15 +153,15 @@ def test_create_patchset():
     assert patchset.patches[3].patch == "p2.patch"
 
 def test_create_patchset_with_filters():
-    tree = treelib.Tree()
+    dag = LayerDAG()
     p1 = PatchConfig(basePath=".", patch="p1.patch", tags="tag1")
     p2 = PatchConfig(basePath=".", patch="p2.patch", tags="tag2")
 
     layer1 = PatchLayer(id="root", title="Root", patches=[p1, p2])
-    tree.create_node(layer1.id, layer1.id, data=layer1)
+    dag.create_node(layer1.id, tag=layer1.id, data=layer1)
 
     ctx = MagicMock()
-    ctx.obj = {'LAYER_TREE': tree}
+    ctx.obj = {'LAYER_DAG': dag}
 
     # Include only tag1
     patchset = create_patchset(ctx, "root", ["tag1"], [])
@@ -285,22 +285,22 @@ def test_load_patches_invalid_json(tmp_path):
         load_patches(str(tmp_path))
 
 def test_create_patchset_tags_none():
-    tree = treelib.Tree()
+    dag = LayerDAG()
     p1 = PatchConfig(basePath=".", patch="p1.patch", tags=None)
     layer1 = PatchLayer(id="root", title="Root", patches=[p1])
-    tree.create_node(layer1.id, layer1.id, data=layer1)
+    dag.create_node(layer1.id, tag=layer1.id, data=layer1)
     ctx = MagicMock()
-    ctx.obj = {'LAYER_TREE': tree}
+    ctx.obj = {'LAYER_DAG': dag}
     # Should not crash and include patch if no filters
     patchset = create_patchset(ctx, "root", [], [])
     assert len(patchset.patches) == 2
 
 def test_document_command_no_template(tmp_path):
     runner = CliRunner()
-    tree = treelib.Tree()
+    dag = LayerDAG()
     layer1 = PatchLayer(id="root", title="Root", description="Desc")
-    tree.create_node(layer1.id, layer1.id, data=layer1)
-    ctx_obj = {'LAYER_TREE': tree}
+    dag.create_node(layer1.id, tag=layer1.id, data=layer1)
+    ctx_obj = {'LAYER_DAG': dag}
     with patch("shared.helpers.layer_config_exists", return_value=True), \
          patch("commands.patchset.create_patchset", return_value=PatchSet(patches=[])), \
          patch("commands.patchset.get_all_referred_layers", return_value=[layer1]):
@@ -340,9 +340,9 @@ def test_extract_patch_commente_complex_file(tmp_path):
 
 def test_patchset_command_single_layer(tmp_path):
     runner = CliRunner()
-    tree = treelib.Tree()
-    tree.create_node("root", "root", data=PatchLayer(id="root"))
-    ctx_obj = {'LAYER_TREE': tree}
+    dag = LayerDAG()
+    dag.create_node("root", tag="root", data=PatchLayer(id="root"))
+    ctx_obj = {'LAYER_DAG': dag}
 
     # We need real patchdir, scriptdir, filedir
     patchdir = tmp_path / "patches"
@@ -361,10 +361,10 @@ def test_patchset_command_single_layer(tmp_path):
 
 def test_document_command_with_patches(tmp_path):
     runner = CliRunner()
-    tree = treelib.Tree()
+    dag = LayerDAG()
     layer1 = PatchLayer(id="root", title="Root")
-    tree.create_node(layer1.id, layer1.id, data=layer1)
-    ctx_obj = {'LAYER_TREE': tree}
+    dag.create_node(layer1.id, tag=layer1.id, data=layer1)
+    ctx_obj = {'LAYER_DAG': dag}
 
     # Create a patch file with comments
     patchdir = tmp_path / "patches"
@@ -440,9 +440,9 @@ def test_add_scripted_scripts_dir_missing(tmp_path):
 
 def test_document_command_template_not_found(tmp_path):
     runner = CliRunner()
-    tree = treelib.Tree()
-    tree.create_node("root", "root", data=PatchLayer(id="root"))
-    ctx_obj = {'LAYER_TREE': tree}
+    dag = LayerDAG()
+    dag.create_node("root", tag="root", data=PatchLayer(id="root"))
+    ctx_obj = {'LAYER_DAG': dag}
     with patch("shared.helpers.layer_config_exists", return_value=True), \
          patch("commands.patchset.create_patchset", return_value=PatchSet(patches=[])):
         result = runner.invoke(document, ["-l", "root", "-t", str(tmp_path / "nonexistent"), "."], obj=ctx_obj)
@@ -487,10 +487,10 @@ def test__patchset_internal_outpath_exists(tmp_path):
 
 def test_document_command_with_template(tmp_path):
     runner = CliRunner()
-    tree = treelib.Tree()
+    dag = LayerDAG()
     layer1 = PatchLayer(id="root", title="Root")
-    tree.create_node(layer1.id, layer1.id, data=layer1)
-    ctx_obj = {'LAYER_TREE': tree}
+    dag.create_node(layer1.id, tag=layer1.id, data=layer1)
+    ctx_obj = {'LAYER_DAG': dag}
 
     template = tmp_path / "template.jinja2"
     template.write_text("Template content for {{ data.primaryLayer }}")
@@ -508,16 +508,16 @@ def test_document_command_with_template(tmp_path):
         assert len(files) == 1
 
 def test_create_patchset_complex_filtering():
-    tree = treelib.Tree()
+    dag = LayerDAG()
     p1 = PatchConfig(basePath=".", patch="p1.patch", tags="tag1, tag2")
     p2 = PatchConfig(basePath=".", patch="p2.patch", tags="tag2, tag3")
     p3 = PatchConfig(basePath=".", patch="p3.patch", tags="tag4")
 
     layer1 = PatchLayer(id="root", title="Root", patches=[p1, p2, p3])
-    tree.create_node(layer1.id, layer1.id, data=layer1)
+    dag.create_node(layer1.id, tag=layer1.id, data=layer1)
 
     ctx = MagicMock()
-    ctx.obj = {'LAYER_TREE': tree}
+    ctx.obj = {'LAYER_DAG': dag}
 
     # Include tag1, exclude tag3 -> only p1
     ps = create_patchset(ctx, "root", ["tag1"], ["tag3"])
@@ -613,17 +613,17 @@ def test_add_scripted_error(tmp_path, caplog):
         assert "Script fail.sh returned 1 when running" in caplog.text
 
 def test_create_all_sets(tmp_path):
-    tree = treelib.Tree()
+    dag = LayerDAG()
     layer1 = PatchLayer(id="root", title="Root")
     layer2 = PatchLayer(id="leaf1", parent="root", title="Leaf 1")
     layer3 = PatchLayer(id="leaf2", parent="root", title="Leaf 2")
 
-    tree.create_node(layer1.id, layer1.id, data=layer1)
-    tree.create_node(layer2.id, layer2.id, parent=layer1.id, data=layer2)
-    tree.create_node(layer3.id, layer3.id, parent=layer1.id, data=layer3)
+    dag.create_node(layer1.id, tag=layer1.id, data=layer1)
+    dag.create_node(layer2.id, tag=layer2.id, parent=layer1.id, data=layer2)
+    dag.create_node(layer3.id, tag=layer3.id, parent=layer1.id, data=layer3)
 
     ctx = MagicMock()
-    ctx.obj = {'LAYER_TREE': tree}
+    ctx.obj = {'LAYER_DAG': dag}
 
     outpath = tmp_path / "out"
     # Note: create_all_sets expects outpath to NOT exist
@@ -637,11 +637,11 @@ def test_create_all_sets(tmp_path):
 def test_document_command_with_misc(tmp_path):
     runner = CliRunner()
 
-    tree = treelib.Tree()
+    dag = LayerDAG()
     layer1 = PatchLayer(id="root", title="Root", description="Desc")
-    tree.create_node(layer1.id, layer1.id, data=layer1)
+    dag.create_node(layer1.id, tag=layer1.id, data=layer1)
 
-    ctx_obj = {'LAYER_TREE': tree}
+    ctx_obj = {'LAYER_DAG': dag}
 
     with patch("shared.helpers.layer_config_exists", return_value=True), \
          patch("shared.helpers.need_layer_config"), \
@@ -664,9 +664,9 @@ def test_document_command_with_misc(tmp_path):
 
 def test_patchset_command_all(tmp_path):
     runner = CliRunner()
-    tree = treelib.Tree()
-    tree.create_node("root", "root", data=PatchLayer(id="root"))
-    ctx_obj = {'LAYER_TREE': tree}
+    dag = LayerDAG()
+    dag.create_node("root", tag="root", data=PatchLayer(id="root"))
+    ctx_obj = {'LAYER_DAG': dag}
 
     with patch("shared.helpers.layer_config_exists", return_value=True), \
          patch("commands.patchset.create_all_sets") as mock_create_all:
@@ -674,3 +674,60 @@ def test_patchset_command_all(tmp_path):
         result = runner.invoke(patchset, ["-a", str(tmp_path / "out")], obj=ctx_obj)
         assert result.exit_code == 0
         mock_create_all.assert_called_once()
+
+def test_get_all_referred_layers_explicit_path():
+    dag = LayerDAG()
+    layer1 = PatchLayer(id="root", title="Root Layer")
+    layer2 = PatchLayer(id="mid", parent="root", title="Mid Layer")
+    layer3 = PatchLayer(id="leaf", parent="mid", title="Leaf Layer")
+
+    dag.create_node(layer1.id, tag=layer1.id, data=layer1)
+    dag.create_node(layer2.id, tag=layer2.id, parent=layer1.id, data=layer2)
+    dag.create_node(layer3.id, tag=layer3.id, parent=layer2.id, data=layer3)
+
+    # Test explicit comma-separated path
+    layers = list(get_all_referred_layers("root,mid,leaf", dag))
+    assert len(layers) == 3
+    assert layers[0].id == "root"
+    assert layers[1].id == "mid"
+    assert layers[2].id == "leaf"
+
+def test_get_all_referred_layers_dummy_node():
+    dag = LayerDAG()
+    layer1 = PatchLayer(id="root")
+    layer2 = PatchLayer(id="a", parent="root")
+    layer3 = PatchLayer(id="b", parent="root")
+    layer4 = PatchLayer(id="target", parents=["a", "b"])
+    
+    dag.create_node(layer1.id, data=layer1)
+    dag.create_node(layer2.id, parent=layer1.id, data=layer2)
+    dag.create_node(layer3.id, parent=layer1.id, data=layer3)
+    dag.create_node(layer4.id, parent=layer2.id, data=layer4)
+    dag.edges[layer4.id].add(layer3.id) # Add second parent manually
+    
+    # Path A: root -> a -> target
+    # Path B: root -> b -> target
+    
+    # Create dummy node for Path A
+    dummy_layer = PatchLayer(id="path-a", parent="target", layers=["root", "a", "target"])
+    dag.create_node(dummy_layer.id, data=dummy_layer, parent="target")
+    
+    layers = list(get_all_referred_layers("path-a", dag))
+    assert len(layers) == 3
+    assert [l.id for l in layers] == ["root", "a", "target"]
+
+def test_get_all_referred_layers_ambiguous():
+    dag = LayerDAG()
+    layer1 = PatchLayer(id="root")
+    layer2 = PatchLayer(id="a", parent="root")
+    layer3 = PatchLayer(id="b", parent="root")
+    layer4 = PatchLayer(id="target", parents=["a", "b"])
+    
+    dag.create_node(layer1.id, data=layer1)
+    dag.create_node(layer2.id, parent=layer1.id, data=layer2)
+    dag.create_node(layer3.id, parent=layer1.id, data=layer3)
+    dag.create_node(layer4.id, parent=layer2.id, data=layer4)
+    dag.edges[layer4.id].add(layer3.id) # Add second parent manually
+    
+    with pytest.raises(SystemExit):
+        get_all_referred_layers("target", dag)
