@@ -1,6 +1,6 @@
 {
   "id": "hardware-support",
-  "parent": "base-os-hardened",
+  "parent": "security-hardening",
   "title": "Hardware Abstraction Layer Support",
   "description": "Enables support for custom hardware peripherals and performs sanity checks on the environment.",
   "patches": [

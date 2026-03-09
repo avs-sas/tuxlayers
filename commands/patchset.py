@@ -411,16 +411,65 @@ def add_patches(fixwhitespace, patchset_dir, previous_work_dir, patch):
 
 def get_all_referred_layers(layer, tree):
     ''' Returns a list of all layers between the root and layer'''
-    node = tree.get_node(layer)
-    if node is None:
-        exit_with_error("Unknown layer " + layer + " requested.")
+    
+    # Check if we have a comma-separated list of layers
+    if ',' in layer:
+        path_ids = [l.strip() for i in layer.split(',') for l in [i.strip()] if l]
+        logger.info("Using explicit path: %s", " -> ".join(path_ids))
+        
+        # Validate the path
+        if not path_ids:
+            exit_with_error("Empty layer list provided.")
+            
+        # 1. Check if first node is the root
+        if path_ids[0] != tree.root:
+            exit_with_error(f"Explicit path must start with root node '{tree.root}'.")
+            
+        # 2. Check each node exists and connectivity
+        for i in range(len(path_ids)):
+            curr_id = path_ids[i]
+            if tree.get_node(curr_id) is None:
+                exit_with_error(f"Layer '{curr_id}' in explicit path does not exist.")
+            
+            if i > 0:
+                prev_id = path_ids[i-1]
+                if prev_id not in tree.parents(curr_id):
+                    exit_with_error(f"Connectivity broken in explicit path: '{prev_id}' is not a parent of '{curr_id}'.")
+    else:
+        # Single layer ID logic (original behavior)
+        node = tree.get_node(layer)
+        if node is None:
+            exit_with_error("Unknown layer " + layer + " requested.")
 
-    layers = []
-    while node is not None:
-        logger.info("Handling layer %s...", node.identifier)
-        layers.append(node.data)
-        node = tree.parent(node.identifier)
-    return reversed(layers)
+        paths = tree.get_all_paths(layer)
+        
+        if len(paths) == 1:
+            logger.info("Found unique path to layer %s", layer)
+            path_ids = paths[0]
+        elif len(paths) > 1:
+            # Check if this is a dummy path node (contains predefined layer sequence)
+            if node.data and node.data.layers:
+                logger.info("Using path defined in dummy node %s", layer)
+                path_ids = node.data.layers
+            else:
+                logger.error("Non-unique path to layer %s. Available paths:", layer)
+                for i, p in enumerate(paths, 1):
+                    logger.error("Path %d: %s", i, " -> ".join(p))
+                    logger.error("   Use: -l %s", ",".join(p))
+                exit_with_error("Please select a unique path by using a dummy path node ID or one of the comma-separated lists above.")
+
+        else:
+            # This case should technically not be reached if layer exists
+            exit_with_error("No path found from root to layer " + layer)
+
+    # Convert path IDs to actual PatchLayer objects
+    referred_layers = []
+    for lid in path_ids:
+        l_node = tree.get_node(lid)
+        if l_node and l_node.data:
+            referred_layers.append(l_node.data)
+            
+    return referred_layers
 
 def create_all_sets(ctx, patchdir, scriptdir, filedir, outpath, filters_include, filters_exclude):
     """For each full path through the tree
@@ -429,7 +478,7 @@ def create_all_sets(ctx, patchdir, scriptdir, filedir, outpath, filters_include,
     if os.path.exists(outpath):
         exit_with_error("Outpath may not exist: " + outpath)
 
-    tree = ctx.obj['LAYER_TREE']
+    tree = ctx.obj['LAYER_DAG']
     for leaf in tree.leaves():
         logger.info("Creating patchset for leaf %s", leaf.identifier)
         _patchset_internal(ctx, leaf.identifier, patchdir,
@@ -442,7 +491,7 @@ def create_all_sets(ctx, patchdir, scriptdir, filedir, outpath, filters_include,
 
 def create_patchset(ctx, layer, filters_include, filters_exclude):
     '''Creates a patchset for the selected layer'''
-    tree = ctx.obj['LAYER_TREE']
+    tree = ctx.obj['LAYER_DAG']
 
     layers = get_all_referred_layers(layer, tree)
 

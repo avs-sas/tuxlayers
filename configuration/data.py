@@ -82,13 +82,13 @@ class PatchLayer():
     Used by BoardConfiguration."""
 
     id: str = ""
-    tree_ids: list[str] = field(default_factory=list)
     parent: str = ""
     parents: list[str] = field(default_factory=list)
     title: str = ""
     shortname: str = "" # used for auto-generation of paths. Optional field. If not set, id is used instead.
     description: str = "" # Used for longer documentation entries. Optional field.
     patches: list[PatchConfig] = field(default_factory=list)
+    layers: list[str] = field(default_factory=list) # Used for dummy path nodes to store the exact layer sequence
 
     # Make this hashable and compareable for usage with graphlib...
     def __hash__(self):
@@ -97,15 +97,6 @@ class PatchLayer():
     def __eq__(self, value):
         return self.id == value.id
 
-    def tree_ids_valid(self) -> bool:
-        ''' List of tree ids needs either to be empty or the same length as parents. Also no empty strings allowed.'''
-        if len(self.parents) > 0:
-            if len(self.tree_ids) == len(self.parents):
-                for i in self.tree_ids:
-                    if len(i) == 0:
-                        return False
-                return True
-        return len(self.tree_ids) == 0
     def have_parent(self) -> bool:
         ''' We need either a single parent (in parent) or multiple ones (via list...)'''
         return len(self.parents) > 0 or len(self.parent) > 0
@@ -113,15 +104,22 @@ class PatchLayer():
     def is_multi_parent(self) -> bool:
         ''' True if list parents are used and parent is emtpy.'''
         return len(self.parents) > 0 and len(self.parent) == 0
+@dataclass_json
+@dataclass
+class LayerPath():
+    """Defines a specific, named sequence of layers through the DAG."""
+    id: str
+    target_layer: str
+    layers: list[str] = field(default_factory=list)
+    title: str = ""
+    description: str = ""
 
-    def get_id_from_index(self, index) -> str:
-        ''' returns either the corresponding entry in tree_ids or auto-generates one by appending the index to id.'''
-        if self.tree_ids_valid():
-            if len(self.tree_ids) > 0:
-                return self.tree_ids[index]
-            else:
-                return self.id + "_" + str(index+1)
-        return ""
+@dataclass_json
+@dataclass
+class LayerPathSet():
+    """A collection of predefined LayerPaths for a project."""
+    paths: list[LayerPath] = field(default_factory=list)
+
 @dataclass
 class PatchInfo():
     '''Collects information about a patch file'''

@@ -34,7 +34,7 @@ def need_layer_config(ctx):
 
 def layer_config_exists(ctx):
     '''Check if we parsed a layer config'''
-    return 'LAYER_SOURCE' in ctx.obj and 'LAYER_TREE' in ctx.obj and ctx.obj['LAYER_TREE'].root is not None
+    return 'LAYER_SOURCE' in ctx.obj and 'LAYER_DAG' in ctx.obj and ctx.obj['LAYER_DAG'].root is not None
 
 def remove_empty_folders(path, remove_base=True):
     'Function to recursively remove empty folders'

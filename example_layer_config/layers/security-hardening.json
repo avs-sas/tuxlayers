@@ -1,7 +1,6 @@
 {
   "id": "security-hardening",
   "parents": ["base-os", "realtime-os"],
-  "tree_ids": ["base-os-hardened", "realtime-os-hardened"],
   "title": "Universal Security Hardening",
   "description": "Applies security policies that are common across all OS variants.",
   "patches": [
